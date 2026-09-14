@@ -1,0 +1,17 @@
+numpy
+pandas
+scipy
+scikit-learn
+nltk
+spacy
+torch
+torchvision
+torchaudio
+transformers
+datasets
+accelerate
+tokenizers
+seqeval
+matplotlib
+seaborn
+streamlit
