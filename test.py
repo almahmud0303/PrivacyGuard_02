@@ -1,16 +1,30 @@
-import numpy
-import pandas
-import sklearn
 import torch
 import transformers
+import sklearn
 import nltk
 
 
-print("NumPy OK")
-print("Pandas OK")
-print("Sklearn OK")
-print("PyTorch OK")
-print("Transformers OK")
-print("NLTK OK")
+print("Python environment working")
 
-print("\nPrivacyGuard Environment Ready")
+print(
+    "PyTorch version:",
+    torch.__version__
+)
+
+
+print(
+    "CUDA available:",
+    torch.cuda.is_available()
+)
+
+
+print(
+    "Transformers:",
+    transformers.__version__
+)
+
+
+print(
+    "Scikit Learn:",
+    sklearn.__version__
+)

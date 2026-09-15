@@ -1,34 +1,99 @@
 import pandas as pd
+import re
+import json
+import os
 
 
 
-df=pd.read_csv(
-"data/raw/pii_dataset.csv"
-)
+INPUT_PATH="../../data/raw/pii_dataset.csv"
+
+OUTPUT_PATH="../../data/annotations/bio_labels.json"
 
 
 
-def get_label(token):
+def annotate_sentence(text):
+
+    tokens=text.split()
+
+    labels=[]
 
 
-    if "@" in token:
-
-        return "B-EMAIL"
+    for token in tokens:
 
 
-    elif token.isdigit() and len(token)==11:
-
-        return "B-PHONE"
+        clean=token.strip(".,!?")
 
 
-    elif token.isdigit():
 
-        return "B-ACCOUNT"
+        if re.match(
+            r"01\d{9}",
+            clean
+        ):
+
+            labels.append("B-PHONE")
 
 
-    else:
 
-        return "O"
+        elif re.match(
+            r"[\w\.-]+@[\w\.-]+",
+            clean
+        ):
+
+            labels.append("B-EMAIL")
+
+
+
+        elif re.match(
+            r"\d{10}",
+            clean
+        ):
+
+            labels.append("B-NID")
+
+
+
+        elif clean in [
+            "Rahim",
+            "Ahmed",
+            "Karim",
+            "Hasan",
+            "John",
+            "Smith",
+            "David",
+            "Miller"
+        ]:
+
+            labels.append("B-PERSON")
+
+
+
+        elif clean in [
+            "Dhaka",
+            "Bangladesh",
+            "Chittagong",
+            "USA",
+            "York"
+        ]:
+
+            labels.append("B-LOCATION")
+
+
+
+        else:
+
+            labels.append("O")
+
+
+    return {
+        "tokens":tokens,
+        "labels":labels
+    }
+
+
+
+
+
+df=pd.read_csv(INPUT_PATH)
 
 
 
@@ -38,43 +103,32 @@ annotations=[]
 
 for text in df["text"]:
 
-
-    tokens=text.split()
-
-
-    labels=[]
-
-
-    for token in tokens:
-
-        labels.append(
-            get_label(token)
-        )
-
-
     annotations.append(
-        {
-        "tokens":tokens,
-        "labels":labels
-        }
+        annotate_sentence(text)
     )
 
 
 
-output=pd.DataFrame(
-annotations
+os.makedirs(
+    "../../data/annotations",
+    exist_ok=True
 )
 
 
-output.to_json(
+with open(
+    OUTPUT_PATH,
+    "w",
+    encoding="utf-8"
+) as f:
 
-"data/processed/bio_dataset.json",
+    json.dump(
+        annotations,
+        f,
+        indent=4,
+        ensure_ascii=False
+    )
 
-orient="records"
-
-)
 
 
-print(
-"BIO annotation completed"
-)
+print("BIO Annotation Completed")
+print("Samples:",len(annotations))

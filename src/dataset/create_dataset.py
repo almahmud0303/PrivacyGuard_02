@@ -1,183 +1,120 @@
 import pandas as pd
 import random
+import os
 
 
-# -------------------------
-# PII DATA
-# -------------------------
+DATA_PATH = "../../data/raw/pii_dataset.csv"
+
 
 
 names = [
+    "Rahim Ahmed",
+    "Karim Hasan",
+    "Nusrat Jahan",
     "John Smith",
-    "David Miller",
-    "Sarah Ahmed",
-    "Michael Brown",
-    "Rahim Hasan"
-]
-
-
-emails = [
-    "john@gmail.com",
-    "david@yahoo.com",
-    "sarah123@gmail.com",
-    "rahim@hotmail.com"
+    "David Miller"
 ]
 
 
 phones = [
     "01712345678",
-    "01855555555",
-    "01999999999",
-    "01677777777"
+    "01898765432",
+    "01955667788"
+]
+
+
+emails = [
+    "rahim@gmail.com",
+    "john@yahoo.com",
+    "david@gmail.com"
 ]
 
 
 addresses = [
     "Dhaka Bangladesh",
-    "New York USA",
-    "London UK",
-    "Chittagong Bangladesh"
+    "Chittagong Bangladesh",
+    "New York USA"
 ]
 
 
-accounts = [
-    "123456789",
-    "987654321",
-    "456789123"
+nids = [
+    "1234567890",
+    "9876543210"
 ]
-
-
-# -------------------------
-# SENTENCE TEMPLATES
-# -------------------------
 
 
 templates = [
 
-"My name is {name} and my email is {email}",
+"My name is {name} and my phone number is {phone}",
 
 
-"Please contact me at {phone}",
+"Contact me at {email}",
 
 
-"My phone number is {phone} and my name is {name}",
-
-
-"My account number is {account}",
+"My NID number is {nid}",
 
 
 "I live at {address}",
 
 
-"Name: {name}, Email: {email}, Phone: {phone}",
+"{name} lives in {address} and email is {email}",
 
 
-"Send the document to {email}",
+"amar nam {name} amar phone {phone}",
 
 
-"My address is {address}"
+"amar email holo {email}",
+
+
+"ami thaki {address}",
+
 
 ]
 
-noisy_templates=[
+
+data=[]
 
 
-"my phn no is {phone}",
+for i in range(5000):
 
-
-"my ph0ne number {phone}",
-
-
-"email me {email}",
-
-
-"my nm is {name}",
-
-
-"addr {address}"
-
-]
-
-# -------------------------
-# GENERATOR
-# -------------------------
-
-
-dataset=[]
-
-for i in range(3000):
-
-
-    template=random.choice(
-        noisy_templates
-    )
+    template=random.choice(templates)
 
 
     text=template.format(
-
-        phone=random.choice(phones),
-
-        email=random.choice(emails),
-
         name=random.choice(names),
-
-        address=random.choice(addresses)
-
-    )
-
-
-    dataset.append(
-        {
-        "text":text
-        }
-    )
-
-for i in range(10000):
-
-
-    template=random.choice(
-        templates
-    )
-
-
-    text=template.format(
-
-        name=random.choice(names),
-
-        email=random.choice(emails),
-
         phone=random.choice(phones),
-
+        email=random.choice(emails),
         address=random.choice(addresses),
-
-        account=random.choice(accounts)
-
+        nid=random.choice(nids)
     )
 
 
-    dataset.append(
+    data.append(
         {
-        "text":text
+            "id":i,
+            "text":text
         }
     )
 
 
 
-df=pd.DataFrame(dataset)
+df=pd.DataFrame(data)
 
+
+
+os.makedirs(
+    "../../data/raw",
+    exist_ok=True
+)
 
 
 df.to_csv(
-"data/raw/pii_dataset.csv",
-index=False
+    DATA_PATH,
+    index=False
 )
 
 
-print(
-"Dataset created successfully"
-)
 
-
-print(
-df.head()
-)
+print("Dataset Created")
+print(df.head())
+print("Total samples:",len(df))

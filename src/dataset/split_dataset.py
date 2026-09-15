@@ -1,75 +1,73 @@
 import pandas as pd
-
-
 from sklearn.model_selection import train_test_split
+import os
 
 
 
-df=pd.read_json(
+INPUT="../../data/raw/pii_dataset.csv"
 
-"data/processed/bio_dataset.json"
 
-)
+
+df=pd.read_csv(INPUT)
 
 
 
 train,temp=train_test_split(
-
-df,
-
-test_size=0.2,
-
-random_state=42
-
+    df,
+    test_size=0.30,
+    random_state=42
 )
 
 
 
-validation,test=train_test_split(
-
-temp,
-
-test_size=0.5,
-
-random_state=42
-
+val,test=train_test_split(
+    temp,
+    test_size=0.50,
+    random_state=42
 )
 
 
 
-train.to_json(
-
-"data/processed/train.json",
-
-orient="records"
-
-)
-
-
-validation.to_json(
-
-"data/processed/validation.json",
-
-orient="records"
-
+os.makedirs(
+    "../../data/processed",
+    exist_ok=True
 )
 
 
 
-test.to_json(
+train.to_csv(
+    "../../data/processed/train.csv",
+    index=False
+)
 
-"data/processed/test.json",
 
-orient="records"
+val.to_csv(
+    "../../data/processed/val.csv",
+    index=False
+)
 
+
+test.to_csv(
+    "../../data/processed/test.csv",
+    index=False
 )
 
 
 
-print("Dataset split completed")
+print("Dataset Split Completed")
 
 print(
-len(train),
-len(validation),
+"Train:",
+len(train)
+)
+
+print(
+"Validation:",
+len(val)
+)
+
+
+print(
+"Test:",
 len(test)
 )
