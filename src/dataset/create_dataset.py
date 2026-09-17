@@ -97,6 +97,32 @@ for i in range(5000):
     )
 
 
+normal_sentences=[
+
+    "Today is a beautiful day",
+
+    "I like learning NLP",
+
+    "The university campus is large",
+
+    "Machine learning is interesting",
+
+    "I am studying computer science"
+
+]
+
+for i in range(1000):
+
+
+    data.append(
+        {
+            "id":5000+i,
+
+            "text":random.choice(
+                normal_sentences
+            )
+        }
+    )
 
 df=pd.DataFrame(data)
 
