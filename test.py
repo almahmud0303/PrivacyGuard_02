@@ -1,30 +1,30 @@
-import torch
-import transformers
-import sklearn
-import nltk
+import ast
+from pathlib import Path
+
+import pandas as pd
+
+from src.features.embeddings import train_word2vec
 
 
-print("Python environment working")
+DATA_FILE = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "processed"
+    / "clean_dataset.csv"
+)
 
-print(
-    "PyTorch version:",
-    torch.__version__
+
+df = pd.read_csv(DATA_FILE)
+
+
+sentences = df["tokens"].apply(ast.literal_eval)
+
+
+model = train_word2vec(
+    sentences
 )
 
 
 print(
-    "CUDA available:",
-    torch.cuda.is_available()
-)
-
-
-print(
-    "Transformers:",
-    transformers.__version__
-)
-
-
-print(
-    "Scikit Learn:",
-    sklearn.__version__
+    model.wv["phone"]
 )
