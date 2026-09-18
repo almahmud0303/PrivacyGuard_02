@@ -6,9 +6,9 @@ from torch.utils.data import DataLoader
 
 from torch.optim import AdamW
 
-from bert_model import create_model
+from .bert_model import create_model
 
-from bert_dataset import BERTDataset
+from .bert_dataset import BERTDataset
 
 
 parser = argparse.ArgumentParser()

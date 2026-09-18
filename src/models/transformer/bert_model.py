@@ -1,7 +1,7 @@
 from transformers import BertForTokenClassification
 
 
-from labels import label2id,id2label
+from .labels import label2id,id2label
 
 
 

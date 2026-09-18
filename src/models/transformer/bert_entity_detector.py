@@ -1,13 +1,10 @@
 import torch
 from pathlib import Path
 
-from transformers import (
-    BertTokenizer,
-    BertForTokenClassification
-)
+from transformers import AutoTokenizer, AutoModelForTokenClassification
 
 
-from labels import id2label
+from .labels import id2label
 
 
 
@@ -26,12 +23,12 @@ class BERTEntityDetector:
                 "Train the transformer model and save it there before running test.py."
             )
 
-        self.tokenizer=BertTokenizer.from_pretrained(
+        self.tokenizer=AutoTokenizer.from_pretrained(
             MODEL_PATH
         )
 
 
-        self.model=BertForTokenClassification.from_pretrained(
+        self.model=AutoModelForTokenClassification.from_pretrained(
             MODEL_PATH
         )
 

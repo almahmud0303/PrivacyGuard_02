@@ -1,6 +1,0 @@
-Model,Precision,Recall,F1
-Logistic Regression,0.98,0.97,0.98
-Naive Bayes,0.95,0.94,0.94
-SVM,0.98,0.98,0.98
-BiLSTM,0.91,0.90,0.90
-BERT,0.96,0.97,0.96

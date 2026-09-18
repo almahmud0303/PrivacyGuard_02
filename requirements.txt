@@ -22,6 +22,10 @@ sentencepiece
 accelerate
 
 streamlit
+fastapi
+uvicorn[standard]
+joblib
+pytest
 
 openpyxl
 

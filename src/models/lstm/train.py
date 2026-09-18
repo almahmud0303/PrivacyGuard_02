@@ -6,9 +6,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 
-from dataset import PIIDataset
+from .dataset import PIIDataset
 
-from model import BiLSTM_PII
+from .model import BiLSTM_PII
 
 
 
