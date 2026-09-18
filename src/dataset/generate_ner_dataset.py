@@ -152,7 +152,6 @@ def main() -> None:
     write(OUTPUT / "train.json", records[:train_end])
     write(OUTPUT / "validation.json", records[train_end:validation_end])
     write(OUTPUT / "test.json", records[validation_end:])
-    write(ROOT / "data" / "annotations" / "bio_labels.json", records)
     print(f"Generated {args.samples} records: train={train_end}, validation={validation_end-train_end}, test={args.samples-validation_end}")
 
 

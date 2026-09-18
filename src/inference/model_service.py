@@ -153,7 +153,7 @@ def _lstm_components():
     labels_file = MODEL_DIR / "bilstm_labels.json"
     if not labels_file.is_file() or json.loads(labels_file.read_text(encoding="utf-8")) != LABELS:
         raise RuntimeError("BiLSTM checkpoint uses the old label schema; retrain it")
-    dataset = PIIDataset(ROOT / "data" / "annotations" / "bio_labels.json")
+    dataset = PIIDataset(ROOT / "data" / "processed" / "train.json")
     checkpoint = torch.load(MODEL_DIR / "bilstm_pii.pt", map_location="cpu", weights_only=True)
     if "state_dict" not in checkpoint or checkpoint.get("labels") != LABELS:
         raise RuntimeError("BiLSTM checkpoint has no compatible vocabulary metadata; retrain it")

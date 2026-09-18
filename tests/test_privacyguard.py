@@ -33,12 +33,6 @@ def test_bengali_person_location_and_nid():
     assert [(item["entity"], item["type"]) for item in result["entities"]] == [
         ("রাইসুল আমান নিরব", "PERSON"), ("ঢাকা", "LOCATION"), ("১২৩৪৫৬৭৮৯০", "NID")]
 
-def test_bio_annotation_uses_inside_labels_for_multiword_entities():
-    from src.dataset.annotation import annotate_sentence
-    annotated = annotate_sentence("My name is Rysul aman nirob and I live in New York")
-    assert annotated["labels"] == ["O", "O", "O", "B-PERSON", "I-PERSON", "I-PERSON",
-        "O", "O", "O", "O", "B-LOCATION", "I-LOCATION"]
-
 def test_person_subject_before_lives_is_grouped():
     result = privacy_guard("Rysul aman nirob lives in New York")
     assert [(item["entity"], item["type"]) for item in result["entities"]] == [

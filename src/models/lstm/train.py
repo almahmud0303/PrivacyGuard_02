@@ -17,7 +17,7 @@ from src.models.transformer.labels import LABELS
 device="cuda" if torch.cuda.is_available() else "cpu"
 
 project_root = Path(__file__).resolve().parents[3]
-dataset_path = project_root / "data" / "annotations" / "bio_labels.json"
+dataset_path = project_root / "data" / "processed" / "train.json"
 model_dir = project_root / "models_saved"
 model_dir.mkdir(parents=True, exist_ok=True)
 model_path = model_dir / "bilstm_pii.pt"
