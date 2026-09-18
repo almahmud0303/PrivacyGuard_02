@@ -1,7 +1,7 @@
 {
   "backend": "tokenizers",
   "cls_token": "[CLS]",
-  "do_lower_case": true,
+  "do_lower_case": false,
   "is_local": false,
   "local_files_only": false,
   "mask_token": "[MASK]",

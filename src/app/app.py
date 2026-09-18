@@ -19,10 +19,12 @@ def main() -> None:
         if status["ready"]:
             st.success("Model artifact ready")
         else:
-            st.warning("Artifact not trained. The safe pattern detector will be used.")
-        st.caption("Entity models find spans. Classical models classify the entire text and use patterns for redaction.")
-        threshold = st.slider("Redaction confidence", 0.0, 1.0, 0.80, 0.05)
-        fallback = st.toggle("Safe fallback", value=True, help="Use pattern detection if the selected model cannot load.")
+            st.warning("Artifact is missing or outdated. Train it before model-only testing.")
+        st.caption("BERT and BiLSTM use model-only NER. Classical models classify the entire text and use patterns for redaction.")
+        threshold = st.slider("Minimum entity confidence", 0.0, 1.0, float(status.get("threshold", .80)), 0.05,
+            help="Lower values improve recall; higher values reduce false positives.")
+        fallback = st.toggle("Fallback on model failure", value=True,
+            help="Only if loading/inference fails, use pattern detection instead of crashing.")
 
     examples = {
         "English": "My phone is 01712345678 and email is user@example.com.",

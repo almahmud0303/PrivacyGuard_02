@@ -1,0 +1,10 @@
+[
+  "O",
+  "B-PERSON",
+  "I-PERSON",
+  "B-EMAIL",
+  "B-PHONE",
+  "B-NID",
+  "B-LOCATION",
+  "I-LOCATION"
+]

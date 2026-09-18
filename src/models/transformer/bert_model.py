@@ -1,27 +1,9 @@
-from transformers import BertForTokenClassification
+from transformers import AutoModelForTokenClassification
+from .labels import label2id, id2label
 
+MODEL_NAME = "google-bert/bert-base-multilingual-cased"
 
-from .labels import label2id,id2label
-
-
-
-MODEL_NAME="bert-base-uncased"
-
-
-
-def create_model():
-
-    model=BertForTokenClassification.from_pretrained(
-
-        MODEL_NAME,
-
-        num_labels=len(label2id),
-
-        id2label=id2label,
-
-        label2id=label2id
-
-    )
-
-
-    return model
+def create_model(model_name: str = MODEL_NAME):
+    return AutoModelForTokenClassification.from_pretrained(
+        model_name, num_labels=len(label2id), id2label=id2label, label2id=label2id,
+        ignore_mismatched_sizes=True)

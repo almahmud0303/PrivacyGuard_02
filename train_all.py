@@ -42,12 +42,31 @@ def main() -> None:
     parser.add_argument("--bilstm", action="store_true", help="also train the BiLSTM")
     parser.add_argument("--bert", action="store_true", help="also fine-tune BERT (slow; may download weights)")
     parser.add_argument("--bert-samples", type=int, default=200)
+    parser.add_argument("--bert-epochs", type=int, default=3)
+    parser.add_argument("--bert-batch-size", type=int, default=8)
+    parser.add_argument("--bert-gradient-accumulation", type=int, default=1)
+    parser.add_argument("--ner-samples", type=int, default=30000,
+                        help="number of directly labeled multilingual NER records to generate")
+    parser.add_argument("--skip-ner-generation", action="store_true",
+                        help="reuse existing train/validation/test NER JSON files")
+    parser.add_argument("--skip-classical", action="store_true",
+                        help="train only requested neural models")
     args = parser.parse_args()
     if not DATA.exists(): raise SystemExit(f"Missing dataset: {DATA}")
-    print(train_baselines().to_string(index=False))
+    if not args.skip_classical:
+        print(train_baselines().to_string(index=False))
+    if (args.bilstm or args.bert) and not args.skip_ner_generation:
+        subprocess.run([sys.executable, "-m", "src.dataset.generate_ner_dataset",
+                        "--samples", str(args.ner_samples)], cwd=ROOT, check=True)
     if args.bilstm: subprocess.run([sys.executable, "-m", "src.models.lstm.train"], cwd=ROOT, check=True)
     if args.bert:
-        subprocess.run([sys.executable, "-m", "src.models.transformer.train", "--max-samples", str(args.bert_samples)], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, "-m", "src.models.transformer.train",
+                        "--max-samples", str(args.bert_samples),
+                        "--epochs", str(args.bert_epochs),
+                        "--batch-size", str(args.bert_batch_size),
+                        "--gradient-accumulation", str(args.bert_gradient_accumulation)], cwd=ROOT, check=True)
+        subprocess.run([sys.executable, "-m", "src.evaluation.evaluate_bert",
+                        "--batch-size", str(args.bert_batch_size)], cwd=ROOT, check=True)
     print(f"Models: {MODELS}\nResults: {RESULTS}")
 
 if __name__ == "__main__": main()

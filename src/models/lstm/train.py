@@ -1,4 +1,5 @@
 import torch
+import json
 from pathlib import Path
 
 import torch.nn as nn
@@ -9,6 +10,7 @@ from torch.utils.data import DataLoader
 from .dataset import PIIDataset
 
 from .model import BiLSTM_PII
+from src.models.transformer.labels import LABELS
 
 
 
@@ -45,7 +47,8 @@ model=BiLSTM_PII(
 
 vocab_size=len(
     dataset.word2idx
-)
+),
+num_labels=len(LABELS)
 
 ).to(device)
 
@@ -54,7 +57,7 @@ vocab_size=len(
 
 criterion=nn.CrossEntropyLoss(
 
-    ignore_index=0
+    ignore_index=-100
 
 )
 
@@ -103,7 +106,7 @@ for epoch in range(epochs):
 
             output.view(
                 -1,
-                6
+                len(LABELS)
             ),
 
             labels.view(
@@ -140,12 +143,15 @@ for epoch in range(epochs):
 
 
 
-torch.save(
-
-    model.state_dict(),
-
-    model_path
-
+torch.save({
+    "state_dict": model.state_dict(),
+    "word2idx": dataset.word2idx,
+    "labels": LABELS,
+    "max_len": dataset.max_len,
+}, model_path)
+(model_dir / "bilstm_labels.json").write_text(
+    json.dumps(LABELS, ensure_ascii=False, indent=2),
+    encoding="utf-8",
 )
 
 

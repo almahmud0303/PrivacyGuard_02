@@ -1,0 +1,20 @@
+[
+  {
+    "accuracy": 0.9805589307411907,
+    "entity_precision": 0.9518796992481203,
+    "entity_recall": 0.9678899082568807,
+    "entity_f1": 0.9598180439727066,
+    "recommended_threshold": 0.0,
+    "epoch": 1,
+    "train_loss": 1.4530222491025924
+  },
+  {
+    "accuracy": 0.9975698663426489,
+    "entity_precision": 0.9938837920489296,
+    "entity_recall": 0.9938837920489296,
+    "entity_f1": 0.9938837920489296,
+    "recommended_threshold": 0.0,
+    "epoch": 2,
+    "train_loss": 0.14546960155665875
+  }
+]

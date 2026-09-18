@@ -128,7 +128,8 @@ This is why the classical classifier task differs from sequence labeling.
 
 ### BIO annotation dataset
 
-`data/annotations/bio_labels.json` contains 6,000 tokenized records. Each record has
+`data/annotations/bio_labels.json` now contains 30,000 directly labeled multilingual
+NER records. Each record has
 parallel `tokens` and `labels` arrays:
 
 ```json
@@ -138,31 +139,32 @@ parallel `tokens` and `labels` arrays:
 }
 ```
 
-Supported training labels are:
+The 28-label schema is `O`, a `B-*` label for every category, and `I-*` labels for
+categories that can span multiple tokens. It covers these eighteen entity types:
 
-| Label | Meaning |
-|---|---|
-| `O` | Not PII |
-| `B-PERSON` | Beginning of a person name |
-| `B-EMAIL` | Email address |
-| `B-PHONE` | Phone number |
-| `B-NID` | National ID number |
-| `B-LOCATION` | Location |
+| Entity types |
+|---|
+| `PERSON`, `LOCATION`, `PHONE`, `EMAIL`, `NID` |
+| `CREDIT_CARD`, `ACCOUNT`, `IP_ADDRESS`, `DATE`, `PASSPORT` |
+| `ORGANIZATION`, `ADDRESS`, `EMPLOYEE_ID`, `MEDICAL_ID`, `STUDENT_ID`, `HEALTH_CONDITION` |
+| `OCCUPATION`, `EDUCATION` |
 
 Current token-label counts are:
 
 | Label | Count |
 |---|---:|
-| `O` | 26,013 |
-| `B-LOCATION` | 3,872 |
-| `B-PERSON` | 3,000 |
-| `B-EMAIL` | 1,889 |
-| `B-PHONE` | 1,216 |
-| `B-NID` | 625 |
+| `O` | 260,096 |
+| `I-PERSON` | 32,807 |
+| `B-PERSON` | 25,681 |
+| `I-ADDRESS` | 24,703 |
+| `I-ORGANIZATION` | 21,138 |
+| `B-ORGANIZATION` | 10,535 |
+| Other sensitive BIO labels | 73,548 |
 
-The annotation logic is dictionary/template based and is intended for coursework
-and model comparison, not as a production ground-truth corpus. In particular, it
-does not yet provide complete `I-*` labels for every multi-token entity.
+The annotation logic combines structured patterns, context cues, and a location
+gazetteer. It produces `B-*`/`I-*` labels for multi-token people and locations, but
+it is still intended for coursework and model comparison rather than production
+ground truth.
 
 ### Checked-in sequence splits
 
@@ -170,16 +172,26 @@ The current JSON split files contain:
 
 | File | Records |
 |---|---:|
-| `data/processed/train.json` | 10,400 |
-| `data/processed/validation.json` | 1,300 |
-| `data/processed/test.json` | 1,300 |
+| `data/processed/train.json` | 24,000 |
+| `data/processed/validation.json` | 3,000 |
+| `data/processed/test.json` | 3,000 |
 
-These files were produced by an earlier 13,000-record generation run and therefore
-do not match the current 6,000-row raw CSV. Do not mix artifacts from different data
-generations in a controlled experiment. Regenerate all derived files and retrain all
-models together when preparing final research results.
+These deterministic 80/10/10 NER splits are generated directly from multilingual
+templates and entity slots; they are separate from the 6,000-row binary-classification
+CSV. Labels are assigned while inserting each slot, not by calling the runtime detector.
 
 ## 7. Recreate the dataset
+
+Create the recommended model-only multilingual NER corpus:
+
+```powershell
+python -m src.dataset.generate_ner_dataset --samples 30000
+```
+
+Increase `--samples` for a larger experiment. The command generates the full corpus
+and 80/10/10 splits with seed 42.
+
+The older binary-classification dataset can be recreated separately:
 
 The legacy dataset scripts currently use paths relative to their own directories.
 Run them in this exact order:
@@ -188,17 +200,17 @@ Run them in this exact order:
 Push-Location src\dataset
 python create_dataset.py
 python create_labels.py
-python annotation.py
 python split_dataset.py
 Pop-Location
+python -m src.dataset.annotation
 ```
 
 This performs the following operations:
 
 1. `create_dataset.py` creates the raw synthetic CSV.
 2. `create_labels.py` creates the binary classification dataset.
-3. `annotation.py` creates token-level BIO annotations.
-4. `split_dataset.py` creates 70% training, 15% validation, and 15% test CSV splits.
+3. `split_dataset.py` creates 70% training, 15% validation, and 15% test CSV splits.
+4. The module command creates BIO annotations plus deterministic 80/10/10 JSON splits.
 
 Because generation uses random template selection, counts and examples can change
 between runs unless a random seed is added to the generator.
@@ -265,7 +277,7 @@ models_saved/svm.joblib
 ### BiLSTM
 
 The BiLSTM uses an embedding layer, bidirectional LSTM, padded token sequences, and
-six BIO classes. Its checkpoint is saved as:
+the complete 28-label BIO schema. Its checkpoint is saved as:
 
 ```text
 models_saved/bilstm_pii.pt
@@ -276,8 +288,8 @@ runs, so that file must remain compatible with the checkpoint.
 
 ### BERT
 
-BERT uses `bert-base-uncased`, subword tokenization, word-to-subword label alignment,
-and a token-classification head. Its local checkpoint is stored in:
+BERT uses `google-bert/bert-base-multilingual-cased`, subword tokenization,
+word-to-subword label alignment, and a 28-label token-classification head. Its local checkpoint is stored in:
 
 ```text
 models_saved/bert_pii/
@@ -287,8 +299,8 @@ models_saved/bert_pii/
 └── tokenizer_config.json
 ```
 
-The current checkpoint is English BERT. For stronger Bengali/Banglish research,
-replace it with multilingual BERT and retrain using a properly multilingual corpus.
+The base model covers 104 languages, including Bengali. Fine-tuning quality still
+depends on the diversity and correctness of the local NER dataset.
 
 ## 10. Train models
 
@@ -327,6 +339,24 @@ python train_all.py --bilstm --bert --bert-samples 0
 
 `--bert-samples 0` disables sample limiting. Full BERT training can take a long time
 on CPU. Existing checkpoint files are overwritten by successful neural training.
+
+To train only the recommended model-only BERT path and avoid classical models:
+
+```powershell
+python train_all.py --skip-classical --bert --bert-samples 0 --ner-samples 30000 --bert-epochs 3 --bert-batch-size 8
+```
+
+Successful BERT and BiLSTM inference uses only model predictions. The pattern detector
+is invoked only when the optional UI fallback handles a missing or failed model.
+
+Training evaluates every epoch on `validation.json`, uses class-weighted loss to reduce
+the dominance of `O`, and saves the checkpoint with the best entity F1. After training,
+`train_all.py` evaluates that checkpoint on `test.json`. Metrics are written to:
+
+```text
+results/bert_metrics.json
+results/bert_test_metrics.json
+```
 
 ## 11. Evaluate and test
 
@@ -538,10 +568,10 @@ python -m streamlit run app.py --server.port 8502
 ## 18. Current limitations
 
 - The dataset is synthetic and has limited names, locations, templates, and linguistic diversity.
-- Current raw and checked-in sequence-split files come from different generation runs.
-- BIO data primarily uses `B-*` rather than complete multi-token `B-*`/`I-*` spans.
+- Context-based person and location detection depends on phrases such as “my name is”
+  and “I live in”; arbitrary uncued prose remains difficult.
 - The preprocessing cleaner removes Bengali characters and needs revision for multilingual training.
-- The BERT base model is English rather than multilingual.
+- Synthetic templates cannot represent every real name, location, identifier, or writing style.
 - Classical models perform document classification, not entity extraction.
 - Pattern detection deliberately favors high precision and does not recognize every possible PII format.
 - The API currently exposes the pattern-based privacy firewall; model comparison is provided by Streamlit.

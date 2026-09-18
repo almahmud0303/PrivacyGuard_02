@@ -1,7 +1,11 @@
 """Span-safe PII redaction."""
 REPLACEMENT_MAP = {"PERSON": "[PERSON]", "EMAIL": "[EMAIL]", "PHONE": "[PHONE_NUMBER]",
     "NID": "[NID]", "LOCATION": "[LOCATION]", "ACCOUNT": "[ACCOUNT_NUMBER]",
-    "CREDIT_CARD": "[CREDIT_CARD]", "IP_ADDRESS": "[IP_ADDRESS]", "DATE": "[DATE]"}
+    "CREDIT_CARD": "[CREDIT_CARD]", "IP_ADDRESS": "[IP_ADDRESS]", "DATE": "[DATE]",
+    "PASSPORT": "[PASSPORT]", "ORGANIZATION": "[ORGANIZATION]", "ADDRESS": "[ADDRESS]",
+    "EMPLOYEE_ID": "[EMPLOYEE_ID]", "MEDICAL_ID": "[MEDICAL_ID]",
+    "STUDENT_ID": "[STUDENT_ID]", "HEALTH_CONDITION": "[HEALTH_CONDITION]",
+    "OCCUPATION": "[OCCUPATION]", "EDUCATION": "[EDUCATION]"}
 
 def should_redact(confidence: float, threshold: float = .80) -> bool:
     return confidence >= threshold
