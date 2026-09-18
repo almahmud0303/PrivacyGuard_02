@@ -1,4 +1,6 @@
 import torch
+import argparse
+from pathlib import Path
 
 from torch.utils.data import DataLoader
 
@@ -7,6 +9,13 @@ from torch.optim import AdamW
 from bert_model import create_model
 
 from bert_dataset import BERTDataset
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--max-samples", type=int, default=200)
+parser.add_argument("--batch-size", type=int, default=16)
+parser.add_argument("--epochs", type=int, default=1)
+args = parser.parse_args()
 
 
 
@@ -29,13 +38,18 @@ print("==========================")
 # LOAD DATASET
 # =========================
 
+project_root = Path(__file__).resolve().parents[3]
+dataset_path = project_root / "data" / "annotations" / "bio_labels.json"
 
 print("Loading dataset...")
 
 
 dataset = BERTDataset(
-    "../../../data/annotations/bio_labels.json"
+    dataset_path
 )
+
+if args.max_samples > 0:
+    dataset.data = dataset.data[:args.max_samples]
 
 
 print(
@@ -59,7 +73,7 @@ loader = DataLoader(
 
     dataset,
 
-    batch_size=4,
+    batch_size=args.batch_size,
 
     shuffle=True
 
@@ -93,7 +107,7 @@ optimizer=AdamW(
 # =========================
 # TRAINING SETTINGS
 # =========================
-epochs=1
+epochs=args.epochs
 # =========================
 # TRAINING LOOP
 # =========================
@@ -187,11 +201,16 @@ for epoch in range(epochs):
 # =========================
 
 
-save_path="../../../models_saved/bert_pii"
+save_path = project_root / "models_saved" / "bert_pii"
+save_path.mkdir(parents=True, exist_ok=True)
 
 
 
 model.save_pretrained(
+    save_path
+)
+
+dataset.tokenizer.save_pretrained(
     save_path
 )
 

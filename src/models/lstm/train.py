@@ -1,4 +1,5 @@
 import torch
+from pathlib import Path
 
 import torch.nn as nn
 
@@ -13,11 +14,16 @@ from model import BiLSTM_PII
 
 device="cuda" if torch.cuda.is_available() else "cpu"
 
+project_root = Path(__file__).resolve().parents[3]
+dataset_path = project_root / "data" / "annotations" / "bio_labels.json"
+model_dir = project_root / "models_saved"
+model_dir.mkdir(parents=True, exist_ok=True)
+model_path = model_dir / "bilstm_pii.pt"
 
 
 dataset=PIIDataset(
 
-"../../../data/annotations/bio_labels.json"
+dataset_path
 
 )
 
@@ -138,7 +144,7 @@ torch.save(
 
     model.state_dict(),
 
-    "../../../models_saved/bilstm_pii.pt"
+    model_path
 
 )
 
