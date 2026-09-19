@@ -267,9 +267,9 @@ APP_CSS = """
 
 
 EXAMPLES = {
-    "English": "My phone is 01712345678 and email is user@example.com.",
-    "বাংলা": "আমার ফোন নম্বর 01898765432 এবং ইমেইল test@example.com।",
-    "Banglish": "amar phone 01955667788, email rahim@example.com",
+    "English": "My phone is 01712345678 and email is abdullah@gmail.com.",
+    "বাংলা": "আমার ফোন নম্বর 01898765432 এবং ইমেইল abdullah@gmail.com",
+    "Banglish": "amar phone 01955667788, email abdullah@gmail.com",
 }
 
 RISK_STYLES = {
