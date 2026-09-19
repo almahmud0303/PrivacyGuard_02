@@ -57,17 +57,34 @@ def available_models() -> dict[str, dict[str, str | bool | float]]:
         except (ValueError, TypeError, json.JSONDecodeError):
             pass
     bert_threshold = .80
-    inference_config = MODEL_DIR / "bert_pii" / "inference_config.json"
-    if inference_config.is_file():
-        try: bert_threshold = float(json.loads(inference_config.read_text(encoding="utf-8"))["confidence_threshold"])
+    bert_inference_config = MODEL_DIR / "bert_pii" / "inference_config.json"
+    if bert_inference_config.is_file():
+        try: bert_threshold = float(json.loads(bert_inference_config.read_text(encoding="utf-8"))["confidence_threshold"])
+        except (KeyError, ValueError, TypeError, json.JSONDecodeError): pass
+    bilstm_threshold = .80
+    bilstm_inference_config = MODEL_DIR / "bilstm_inference_config.json"
+    if bilstm_inference_config.is_file():
+        try: bilstm_threshold = float(json.loads(bilstm_inference_config.read_text(encoding="utf-8"))["confidence_threshold"])
         except (KeyError, ValueError, TypeError, json.JSONDecodeError): pass
     return {
         "Pattern detector": {"ready": True, "kind": "entity", "threshold": .80},
         "BERT": {"ready": bert_ready, "kind": "entity", "threshold": bert_threshold},
-        "BiLSTM": {"ready": bilstm_ready, "kind": "entity", "threshold": .80},
+        "BiLSTM": {"ready": bilstm_ready, "kind": "entity", "threshold": bilstm_threshold},
         "Logistic Regression": {"ready": (MODEL_DIR / "logistic_regression.joblib").is_file(), "kind": "classifier"},
+        "Logistic Regression (Scratch)": {
+            "ready": (MODEL_DIR / "logistic_regression_scratch.joblib").is_file(),
+            "kind": "classifier",
+        },
         "Naive Bayes": {"ready": (MODEL_DIR / "naive_bayes.joblib").is_file(), "kind": "classifier"},
+        "Naive Bayes (Scratch)": {
+            "ready": (MODEL_DIR / "naive_bayes_scratch.joblib").is_file(),
+            "kind": "classifier",
+        },
         "SVM": {"ready": (MODEL_DIR / "svm.joblib").is_file(), "kind": "classifier"},
+        "SVM (Scratch)": {
+            "ready": (MODEL_DIR / "svm_scratch.joblib").is_file(),
+            "kind": "classifier",
+        },
     }
 
 
@@ -159,13 +176,31 @@ def _lstm_components():
     labels_file = MODEL_DIR / "bilstm_labels.json"
     if not labels_file.is_file() or json.loads(labels_file.read_text(encoding="utf-8")) != LABELS:
         raise RuntimeError("BiLSTM checkpoint uses the old label schema; retrain it")
-    dataset = PIIDataset(ROOT / "data" / "processed" / "train.json")
     checkpoint = torch.load(MODEL_DIR / "bilstm_pii.pt", map_location="cpu", weights_only=True)
     if "state_dict" not in checkpoint or checkpoint.get("labels") != LABELS:
         raise RuntimeError("BiLSTM checkpoint has no compatible vocabulary metadata; retrain it")
-    dataset.word2idx = checkpoint["word2idx"]
-    dataset.max_len = checkpoint.get("max_len", 32)
-    model = BiLSTM_PII(len(dataset.word2idx), num_labels=len(LABELS))
+    dataset = PIIDataset(
+        ROOT / "data" / "processed" / "train.json",
+        max_len=checkpoint.get("max_len", 32),
+        word2idx=checkpoint["word2idx"],
+        min_frequency=checkpoint.get("min_frequency", 1),
+        normalize_tokens=checkpoint.get("normalize_tokens", False),
+    )
+    inference_config = MODEL_DIR / "bilstm_inference_config.json"
+    overlap = min(16, max(dataset.max_len - 1, 0))
+    if inference_config.is_file():
+        try:
+            overlap = int(json.loads(inference_config.read_text(encoding="utf-8"))["window_overlap"])
+        except (KeyError, ValueError, TypeError, json.JSONDecodeError):
+            pass
+    dataset.window_overlap = min(max(overlap, 0), max(dataset.max_len - 1, 0))
+    model = BiLSTM_PII(
+        len(dataset.word2idx),
+        embedding_dim=checkpoint.get("embedding_dim", 100),
+        hidden_dim=checkpoint.get("hidden_dim", 128),
+        num_labels=len(LABELS),
+        dropout=checkpoint.get("dropout", 0.2),
+    )
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
     return dataset, model, torch
@@ -173,32 +208,63 @@ def _lstm_components():
 
 def _predict_lstm(text: str) -> list[dict]:
     dataset, model, torch = _lstm_components()
-    matches = list(re.finditer(r"\S+", text))[:dataset.max_len]
-    ids = [dataset.word2idx.get(m.group(), 1) for m in matches]
-    padded = ids + [0] * (dataset.max_len - len(ids))
-    with torch.inference_mode():
-        probs = model(torch.tensor([padded])).softmax(dim=-1)[0]
     from src.models.transformer.labels import LABELS
-    labels = LABELS
+    spans = _lexical_spans(text)
+    if not spans:
+        return []
+
+    # Overlapping windows preserve bidirectional context at boundaries and let
+    # the same checkpoint process text of any practical length.
+    max_len = dataset.max_len
+    overlap = getattr(dataset, "window_overlap", min(16, max_len - 1))
+    stride = max(max_len - overlap, 1)
+    starts = list(range(0, len(spans), stride))
+    windows = [spans[start:start + max_len] for start in starts]
+    best_context = [-1] * len(spans)
+    best_probabilities = [None] * len(spans)
+
+    with torch.inference_mode():
+        for batch_start in range(0, len(windows), 64):
+            batch_windows = windows[batch_start:batch_start + 64]
+            lengths = torch.tensor([len(window) for window in batch_windows], dtype=torch.long)
+            token_rows = []
+            for window in batch_windows:
+                ids = [dataset.token_to_id(span.value) for span in window]
+                token_rows.append(ids + [0] * (max_len - len(ids)))
+            probabilities = model(
+                torch.tensor(token_rows, dtype=torch.long), lengths=lengths
+            ).softmax(dim=-1)
+            for local_batch_index, window in enumerate(batch_windows):
+                global_start = starts[batch_start + local_batch_index]
+                for local_index in range(len(window)):
+                    global_index = global_start + local_index
+                    context = min(local_index + 1, len(window) - local_index)
+                    if context > best_context[global_index]:
+                        best_context[global_index] = context
+                        best_probabilities[global_index] = probabilities[local_batch_index, local_index]
+
     entities = []
-    for index, match in enumerate(matches):
-        label_id = int(probs[index].argmax())
-        label = labels[label_id]
+    for span, probabilities in zip(spans, best_probabilities):
+        label_id = int(probabilities.argmax())
+        label = LABELS[label_id]
         if label == "O":
             continue
+        if label.startswith("B-") and not any(character.isalnum() for character in span.value):
+            continue
         kind = label.removeprefix("B-").removeprefix("I-")
-        confidence = float(probs[index, label_id])
-        if label.startswith("I-") and entities and entities[-1]["type"] == kind:
-            entities[-1]["end"] = match.end()
-            entities[-1]["entity"] = text[entities[-1]["start"]:match.end()]
+        confidence = float(probabilities[label_id])
+        if (label.startswith("I-") and entities and entities[-1]["type"] == kind
+                and span.start <= entities[-1]["end"] + 1):
+            entities[-1]["end"] = span.end
+            entities[-1]["entity"] = text[entities[-1]["start"]:span.end]
             entities[-1]["confidence"] = min(entities[-1]["confidence"], confidence)
         else:
-            entities.append({"entity": match.group(), "type": kind, "start": match.start(),
-                             "end": match.end(), "confidence": confidence, "source": "bilstm"})
+            entities.append({"entity": span.value, "type": kind, "start": span.start,
+                             "end": span.end, "confidence": confidence, "source": "bilstm"})
     return entities
 
 
-@lru_cache(maxsize=3)
+@lru_cache(maxsize=6)
 def _classical_model(filename: str):
     import joblib
     return joblib.load(MODEL_DIR / filename)
@@ -221,9 +287,22 @@ def analyze(text: str, model_name: str, threshold: float = .80, fallback: bool =
         if model_name == "BiLSTM":
             return _finish(text, _predict_lstm(text), threshold, model_name,
                            "Model-only neural inference; no rule-based entities were added.")
-        files = {"Logistic Regression": "logistic_regression.joblib", "Naive Bayes": "naive_bayes.joblib", "SVM": "svm.joblib"}
-        classifier = _classical_model(files[model_name])
-        prediction = int(classifier.predict([text])[0])
+        files = {
+            "Logistic Regression": "logistic_regression.joblib",
+            "Logistic Regression (Scratch)": "logistic_regression_scratch.joblib",
+            "Naive Bayes": "naive_bayes.joblib",
+            "Naive Bayes (Scratch)": "naive_bayes_scratch.joblib",
+            "SVM": "svm.joblib",
+            "SVM (Scratch)": "svm_scratch.joblib",
+        }
+        artifact = _classical_model(files[model_name])
+        if model_name.endswith("(Scratch)"):
+            if not isinstance(artifact, dict) or not {"vectorizer", "classifier"} <= artifact.keys():
+                raise RuntimeError(f"{model_name} artifact is invalid; retrain it")
+            features = artifact["vectorizer"].transform([text])
+            prediction = int(artifact["classifier"].predict(features)[0])
+        else:
+            prediction = int(artifact.predict([text])[0])
         result = privacy_guard(text, threshold)
         result.update(model=model_name, classification="PII" if prediction else "SAFE",
                       note="Classical models classify the whole text; pattern spans are used for safe redaction.")

@@ -1,0 +1,67 @@
+{
+  "device": "cpu",
+  "best_epoch": 5,
+  "best_threshold": 0.5,
+  "best_validation_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0
+  },
+  "train_samples": 24000,
+  "validation_samples": 3000,
+  "vocabulary_size": 345,
+  "max_length": 128,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.7334541916609445,
+      "validation_loss": 0.0103738639348497,
+      "threshold": 0.55,
+      "accuracy": 0.9998654127120972,
+      "precision": 0.9997875391724651,
+      "recall": 0.999681342609804,
+      "f1": 0.9997344380709581
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.029512443956225477,
+      "validation_loss": 0.0012311536120250821,
+      "threshold": 0.5,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.010452246716979178,
+      "validation_loss": 0.00041032418569860357,
+      "threshold": 0.5,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.005680467880162549,
+      "validation_loss": 0.00019503994311283654,
+      "threshold": 0.5,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.003989414558399152,
+      "validation_loss": 0.00014490373966206485,
+      "threshold": 0.5,
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  ]
+}

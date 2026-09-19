@@ -181,6 +181,28 @@ def main() -> None:
 
 
     parser.add_argument(
+        "--bilstm-epochs",
+        type=int,
+        default=8
+    )
+
+
+    parser.add_argument(
+        "--bilstm-batch-size",
+        type=int,
+        default=128
+    )
+
+
+    parser.add_argument(
+        "--bilstm-max-length",
+        type=int,
+        default=128,
+        help="training window length; inference automatically uses overlapping windows"
+    )
+
+
+    parser.add_argument(
         "--bert-samples",
         type=int,
         default=200
@@ -282,7 +304,13 @@ def main() -> None:
             [
                 sys.executable,
                 "-m",
-                "src.models.lstm.train"
+                "src.models.lstm.train",
+                "--epochs",
+                str(args.bilstm_epochs),
+                "--batch-size",
+                str(args.bilstm_batch_size),
+                "--max-length",
+                str(args.bilstm_max_length)
             ],
             cwd=ROOT,
             check=True

@@ -1,0 +1,102 @@
+{
+  "metrics": {
+    "model": "logistic_regression_scratch",
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "epochs_completed": 1000,
+    "initial_loss": 0.6931471805599453,
+    "final_loss": 0.11469762562538238,
+    "learning_rate": 0.5,
+    "l2": 0.001,
+    "features": 157,
+    "train_samples": 4800,
+    "test_samples": 1200,
+    "seed": 42
+  },
+  "top_safe_features": [
+    {
+      "feature": "live",
+      "weight": -1.750067868430804
+    },
+    {
+      "feature": "live at",
+      "weight": -1.750067868430804
+    },
+    {
+      "feature": "learning",
+      "weight": -1.5999286351642241
+    },
+    {
+      "feature": "ami",
+      "weight": -1.5563857033525725
+    },
+    {
+      "feature": "ami thaki",
+      "weight": -1.5563857033525725
+    },
+    {
+      "feature": "thaki",
+      "weight": -1.5563857033525725
+    },
+    {
+      "feature": "bangladesh",
+      "weight": -1.2930491806494473
+    },
+    {
+      "feature": "learning nlp",
+      "weight": -0.989058976125774
+    },
+    {
+      "feature": "like",
+      "weight": -0.989058976125774
+    },
+    {
+      "feature": "nlp",
+      "weight": -0.989058976125774
+    }
+  ],
+  "top_pii_features": [
+    {
+      "feature": "amar",
+      "weight": 2.1779025713262805
+    },
+    {
+      "feature": "my",
+      "weight": 1.8660866441759978
+    },
+    {
+      "feature": "com",
+      "weight": 1.8549064927266081
+    },
+    {
+      "feature": "gmail",
+      "weight": 1.4250992723823737
+    },
+    {
+      "feature": "gmail com",
+      "weight": 1.4250992723823737
+    },
+    {
+      "feature": "number",
+      "weight": 1.3820696435569353
+    },
+    {
+      "feature": "number is",
+      "weight": 1.3820696435569353
+    },
+    {
+      "feature": "email",
+      "weight": 1.367851334893462
+    },
+    {
+      "feature": "john",
+      "weight": 1.2809705365612665
+    },
+    {
+      "feature": "phone",
+      "weight": 1.2607224529389485
+    }
+  ]
+}

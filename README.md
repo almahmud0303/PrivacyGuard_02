@@ -1,11 +1,11 @@
-# PrivacyGuard
+# PrivacyGuard — Multilingual PII Detection and Redaction
 
 PrivacyGuard is a multilingual NLP project for detecting and redacting personally identifiable information (PII) in English, Bengali, and Banglish/code-mixed text.
 
 It includes:
 
 - a rule and context detector;
-- Logistic Regression, Multinomial Naive Bayes, and Linear SVM document classifiers;
+- scikit-learn and from-scratch Logistic Regression, Multinomial Naive Bayes, and Linear SVM document classifiers;
 - BiLSTM and multilingual BERT token classifiers;
 - span-safe redaction and privacy-risk scoring;
 - a Streamlit model-comparison interface;
@@ -16,24 +16,39 @@ It includes:
 
 ## Contents
 
-1. [What the system does](#what-the-system-does)
-2. [Tasks and model choices](#tasks-and-model-choices)
-3. [Complete system architecture](#complete-system-architecture)
-4. [Supported entities and BIO labels](#supported-entities-and-bio-labels)
-5. [Project structure](#project-structure)
-6. [Installation](#installation)
-7. [Quick start](#quick-start)
-8. [Dataset pipelines](#dataset-pipelines)
-9. [Preprocessing and text representation](#preprocessing-and-text-representation)
-10. [Every model pipeline from start to finish](#every-model-pipeline-from-start-to-finish)
-11. [Inference, confidence, risk, and redaction](#inference-confidence-risk-and-redaction)
-12. [Training commands](#training-commands)
-13. [Evaluation and current results](#evaluation-and-current-results)
-14. [Streamlit application](#streamlit-application)
-15. [FastAPI service](#fastapi-service)
-16. [Testing](#testing)
-17. [Limitations and recommended improvements](#limitations-and-recommended-improvements)
-18. [Troubleshooting](#troubleshooting)
+1. [Project status](#project-status)
+2. [What the system does](#what-the-system-does)
+3. [Tasks and model choices](#tasks-and-model-choices)
+4. [Complete system architecture](#complete-system-architecture)
+5. [Supported entities and BIO labels](#supported-entities-and-bio-labels)
+6. [Project structure](#project-structure)
+7. [Installation](#installation)
+8. [Quick start](#quick-start)
+9. [Dataset pipelines](#dataset-pipelines)
+10. [Preprocessing and text representation](#preprocessing-and-text-representation)
+11. [Every model pipeline from start to finish](#every-model-pipeline-from-start-to-finish)
+12. [Inference, confidence, risk, and redaction](#inference-confidence-risk-and-redaction)
+13. [Training commands](#training-commands)
+14. [Evaluation and current results](#evaluation-and-current-results)
+15. [Streamlit application](#streamlit-application)
+16. [FastAPI service](#fastapi-service)
+17. [Testing](#testing)
+18. [Limitations and recommended improvements](#limitations-and-recommended-improvements)
+19. [Troubleshooting](#troubleshooting)
+
+## Project status
+
+| Capability | Status | Main implementation |
+|---|---|---|
+| Pattern/context PII detection | Implemented | `src/redection/` |
+| Document-level PII classification | Implemented | scikit-learn Logistic Regression, Naive Bayes and SVM |
+| Classical algorithms from scratch | Implemented | manual Logistic Regression, Multinomial Naive Bayes and Linear SVM |
+| Neural token classification | Implemented | BiLSTM and multilingual BERT |
+| Long-text BiLSTM inference | Implemented | overlapping 128-token windows with 32-token overlap |
+| Exact-offset redaction and risk scoring | Implemented | reverse-offset span replacement |
+| Interactive UI and API | Implemented | modern Streamlit dashboard and FastAPI pattern endpoint |
+| RAG | Not implemented | no retriever, vector database or document-generation chain |
+| Generative rewriting/pseudonymization | Future work | current system detects, classifies and redacts text |
 
 ## What the system does
 
@@ -73,22 +88,27 @@ PrivacyGuard implements two different NLP tasks.
 | Task | Models | Output | Exact PII spans? |
 |---|---|---|---|
 | Entity detection / NER | Pattern detector, BiLSTM, BERT | Entity type, offsets, confidence | Yes |
-| Document classification | Logistic Regression, Naive Bayes, SVM | Entire text is `PII` or `SAFE` | No |
+| Document classification | Logistic Regression, Naive Bayes, SVM, and their Scratch variants | Entire text is `PII` or `SAFE` | No |
 
-The Streamlit application offers six choices:
+The Streamlit application offers nine choices:
 
 1. **Pattern detector** - finds structured patterns and selected contextual names/locations.
 2. **BERT** - model-only multilingual token classification.
 3. **BiLSTM** - model-only token classification with a learned word vocabulary.
 4. **Logistic Regression** - classifies the full input; patterns provide redaction spans.
-5. **Naive Bayes** - classifies the full input; patterns provide redaction spans.
-6. **SVM** - classifies the full input; patterns provide redaction spans.
+5. **Logistic Regression (Scratch)** - uses the manual NumPy classifier and its separate TF-IDF artifact.
+6. **Naive Bayes** - classifies the full input; patterns provide redaction spans.
+7. **Naive Bayes (Scratch)** - uses manual priors, Laplace smoothing, and log likelihoods.
+8. **SVM** - classifies the full input; patterns provide redaction spans.
+9. **SVM (Scratch)** - uses manual hinge loss, subgradients, and L2-regularized updates.
 
 If a learned model is unavailable, incompatible, or fails, optional safe fallback uses the pattern detector.
 
 ## Complete system architecture
 
 ![PrivacyGuard complete system architecture](diag/architecture.jpg)
+
+At training time, document classifiers learn from TF-IDF features while BiLSTM and mBERT learn BIO token labels. At inference time, the selected model returns either document classification or entity spans; confidence filtering, risk assignment and reverse-offset redaction then produce the protected output. The registry validates saved artifacts and can safely fall back to the pattern detector when a learned model fails.
 
 ## Supported entities and BIO labels
 
@@ -159,10 +179,14 @@ PrivacyGuard_02/
 |       +-- test.json
 |-- models_saved/
 |   |-- logistic_regression.joblib
+|   |-- logistic_regression_scratch.joblib
 |   |-- naive_bayes.joblib
+|   |-- naive_bayes_scratch.joblib
 |   |-- svm.joblib
+|   |-- svm_scratch.joblib
 |   |-- bilstm_pii.pt
 |   |-- bilstm_labels.json
+|   |-- bilstm_inference_config.json
 |   +-- bert_pii/
 |       |-- config.json
 |       |-- model.safetensors
@@ -170,19 +194,24 @@ PrivacyGuard_02/
 |       +-- inference_config.json
 |-- results/
 |   |-- baseline_results.csv
+|   |-- bilstm_metrics.json
 |   |-- bert_metrics.json
-|   +-- bert_test_metrics.json
+|   |-- bert_test_metrics.json
+|   |-- logistic_regression_scratch_results.json
+|   |-- naive_bayes_scratch_results.json
+|   +-- svm_scratch_results.json
 |-- src/
 |   |-- app/app.py
 |   |-- dataset/
 |   |-- evaluation/evaluate_bert.py
 |   |-- features/
 |   |-- inference/model_service.py
+|   |-- models/baseline/            # Three manual classical implementations
 |   |-- models/lstm/
 |   |-- models/transformer/
 |   |-- preprocessing/
 |   +-- redection/                  # Existing package name
-|-- tests/test_privacyguard.py
+|-- tests/                           # Registry, redaction and model unit tests
 +-- notebooks/01_EDA.ipynb
 ```
 
@@ -309,9 +338,9 @@ The generator:
 | File | Current records | Purpose |
 |---|---:|---|
 | `ner_dataset.json` | 30,000 | Complete dataset |
-| `train.json` | 24,000 | BiLSTM/BERT fitting |
-| `validation.json` | 3,000 | BERT checkpoint/threshold selection |
-| `test.json` | 3,000 | Held-out BERT evaluation |
+| `train.json` | 24,000 | BiLSTM and BERT fitting |
+| `validation.json` | 3,000 | BiLSTM/BERT checkpoint and threshold selection |
+| `test.json` | 3,000 | Held-out neural-model evaluation |
 
 Record format:
 
@@ -483,6 +512,18 @@ Configuration: `class_weight="balanced"`. The current SVM does not expose calibr
 
 Artifact: `models_saved/svm.joblib`
 
+#### What “from scratch” means
+
+The three scratch variants keep the same TF-IDF representation so their results remain comparable, but their classifier mathematics is implemented in this repository instead of calling the equivalent scikit-learn estimator:
+
+| Scratch model | Manually implemented operations |
+|---|---|
+| Logistic Regression | `w·x + b`, sigmoid, binary cross-entropy, analytical gradients and gradient descent |
+| Multinomial Naive Bayes | class priors, feature counts, Laplace smoothing and joint log likelihood |
+| Linear SVM | hinge loss, L2 regularization, subgradients and iterative parameter updates |
+
+Their source files and trainers are under `src/models/baseline/`. TF-IDF itself still comes from scikit-learn; only the classifiers are hand-written.
+
 ### 3. BiLSTM sequence labeler
 
 Code: `src/models/lstm/`
@@ -493,30 +534,38 @@ Training:
 
 ```text
 train.json
-  -> vocabulary: <PAD>=0, <UNK>=1
-  -> token IDs, pad/truncate to 32
+  -> Unicode/case/digit normalization and reusable email shape token
+  -> minimum-frequency vocabulary: <PAD>=0, <UNK>=1
+  -> token IDs, pad/truncate training windows to 128
+  -> word dropout trains a useful <UNK> representation
   -> embedding: vocabulary_size x 100
+  -> packed sequences ignore trailing padding
   -> bidirectional LSTM: hidden 128 per direction
   -> concatenate directions: 256 values/token
+  -> dropout
   -> linear layer: 256 -> 28 label logits
-  -> cross-entropy, ignore padding label -100
-  -> Adam, learning rate 0.001
-  -> save weights + vocabulary + labels + max length
+  -> class-weighted cross-entropy, ignore padding label -100
+  -> AdamW + gradient clipping
+  -> validation threshold scan and entity-token metrics
+  -> early stopping and best-checkpoint saving
 ```
 
 Output shape:
 
 ```text
-[batch_size, 32, 28]
+[batch_size, 128, 28]
 ```
 
 Inference:
 
 ```text
-text -> first 32 token spans -> saved vocabulary IDs
-     -> BiLSTM -> softmax BIO labels
+text -> exact lexical spans across the complete document
+     -> overlapping 128-token windows with 32-token overlap
+     -> normalized saved-vocabulary IDs
+     -> packed BiLSTM -> softmax BIO labels
+     -> keep the prediction with the strongest boundary context
      -> merge compatible I tags
-     -> confidence threshold -> risk -> redaction
+     -> validation-selected confidence threshold -> risk -> redaction
 ```
 
 Padding uses `-100` rather than `O`, and `CrossEntropyLoss(ignore_index=-100)` prevents empty positions from being learned as outside tokens.
@@ -527,10 +576,12 @@ Artifacts:
 
 - `models_saved/bilstm_pii.pt`
 - `models_saved/bilstm_labels.json`
+- `models_saved/bilstm_inference_config.json`
+- `results/bilstm_metrics.json`
 
-Strengths: bidirectional context, relatively small, and educationally clear.
+Strengths: bidirectional context, full-document sliding-window inference, a relatively small model, and educationally clear training code.
 
-Limitations: unknown-word problem, 32-token maximum, and no validation/best-checkpoint loop.
+Limitations: unseen names and misspellings can still map to `<UNK>`, and synthetic template data can produce confident errors on substantially different real-world writing.
 
 ### 4. Multilingual BERT token classifier
 
@@ -587,7 +638,7 @@ Limitations: high CPU training cost, large artifact, and dependence on synthetic
 
 ### 5. Optional Word2Vec utility
 
-`src/features/embeddings.py` defines a 100-dimensional skip-gram Word2Vec model and mean sentence embeddings. It is experimental and not used by `train_all.py`, Streamlit, or the six-model registry.
+`src/features/embeddings.py` defines a 100-dimensional skip-gram Word2Vec model and mean sentence embeddings. It is experimental and not used by `train_all.py`, Streamlit, or the nine-model registry.
 
 ## Inference, confidence, risk, and redaction
 
@@ -659,6 +710,27 @@ python train_all.py
 
 Creates three `.joblib` files and `results/baseline_results.csv`.
 
+### Optional classical models from scratch
+
+The project contains separate NumPy implementations of Logistic Regression,
+Multinomial Naive Bayes, and linear SVM. They reuse sparse TF-IDF features,
+produce separate artifacts, and do not replace the scikit-learn models.
+
+```powershell
+python -m src.models.baseline.train_logistic_scratch
+python -m src.models.baseline.train_naive_bayes_scratch
+python -m src.models.baseline.train_svm_scratch
+```
+
+Separate outputs:
+
+- `models_saved/logistic_regression_scratch.joblib`
+- `models_saved/naive_bayes_scratch.joblib`
+- `models_saved/svm_scratch.joblib`
+- `results/logistic_regression_scratch_results.json`
+- `results/naive_bayes_scratch_results.json`
+- `results/svm_scratch_results.json`
+
 ### Generate NER data only
 
 ```powershell
@@ -673,12 +745,12 @@ Minimum sample count is 100.
 python train_all.py --skip-classical --bilstm --ner-samples 30000
 ```
 
-`train_all.py` uses BiLSTM defaults: 3 epochs, batch 128, seed 42.
+`train_all.py` uses BiLSTM defaults: up to 8 epochs, batch 128, maximum training window 128, seed 42, validation, and early stopping.
 
 Custom BiLSTM training with existing data:
 
 ```powershell
-python -m src.models.lstm.train --epochs 5 --batch-size 128 --seed 42
+python -m src.models.lstm.train --epochs 8 --batch-size 128 --max-length 128 --seed 42
 ```
 
 ### Small BERT experiment
@@ -729,8 +801,26 @@ The classical pipeline reports accuracy and weighted precision, recall, and F1.
 | Model | Accuracy | Precision | Recall | F1 |
 |---|---:|---:|---:|---:|
 | Logistic Regression | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| Logistic Regression (Scratch) | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
 | Naive Bayes | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| Naive Bayes (Scratch) | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
 | SVM | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| SVM (Scratch) | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+
+### BiLSTM
+
+The improved BiLSTM was trained on 24,000 records, validated on 3,000 records and saved at the best validation checkpoint. It uses a 128-token training window and automatically applies overlapping windows to longer input.
+
+| Validation metric | Value |
+|---|---:|
+| Token accuracy | 1.0000 |
+| Entity-token precision | 1.0000 |
+| Entity-token recall | 1.0000 |
+| Entity-token F1 | 1.0000 |
+| Recommended threshold | 0.50 |
+| Best epoch | 5 |
+
+A separate 3,000-record synthetic test check also produced 1.0000 token accuracy, precision, recall and F1 at threshold 0.50. A 152-token manual inference check detected an email after token 150 with confidence 0.9948, confirming that inference no longer stops at a fixed first window.
 
 ### BERT
 
@@ -766,12 +856,14 @@ python -m streamlit run app.py
 
 Features:
 
-- six model choices and artifact status;
-- confidence threshold;
-- fallback toggle;
+- responsive dark privacy-dashboard design;
+- nine model choices and artifact status;
+- model-specific confidence threshold and safe-fallback controls;
 - English, Bengali, and Banglish examples;
+- risk-colored result badges and summary metrics;
+- confidence progress bars and exact offsets;
 - protected-text download;
-- entity type, risk, confidence, source, and offsets.
+- local-processing privacy notice.
 
 Successful BERT/BiLSTM runs use model-only NER; patterns are not silently added. Classical runs use document prediction plus pattern spans.
 
@@ -821,7 +913,7 @@ Limits:
 python -m pytest
 ```
 
-Tests cover multi-entity redaction, Bengali preservation, card validation, fallback, model registry, multi-word entities, Bengali person/location/NID, BIO coverage, model-only BERT behavior, and sensitive-token preservation.
+The current suite contains 27 tests. It covers multi-entity redaction, Bengali preservation, card validation, fallback, all nine registry entries, scratch-classifier mathematics, long-text BiLSTM windowing, padding-independent packed sequences, token normalization, BIO coverage, model-only BERT behavior, and sensitive-token preservation.
 
 Manual checks:
 
@@ -840,8 +932,8 @@ python -c "from src.inference.model_service import analyze; print(analyze('Email
 4. BIOES is not implemented; the project uses BIO.
 5. The test set is not a manually reviewed gold set.
 6. Pattern coverage is narrower than the neural schema.
-7. BiLSTM has an exact vocabulary and 32-token limit.
-8. BiLSTM lacks validation, early stopping, and best-checkpoint metrics.
+7. BiLSTM still represents genuinely unseen rare words with one shared `<UNK>` vector.
+8. BiLSTM validation is token-level and based on synthetic data rather than a human-reviewed gold set.
 9. BERT evaluation is token-level, not strict span-level.
 10. Classical labels are simple weak labels and can reward template memorization.
 11. FastAPI exposes patterns only.
@@ -854,7 +946,7 @@ python -c "from src.inference.model_service import analyze; print(analyze('Email
 3. Create and double-review a smaller gold test set.
 4. Store original text, token offsets, entity spans, and annotator metadata.
 5. Add strict span-level/per-type evaluation with `seqeval` or `nervaluate`.
-6. Add BiLSTM validation, early stopping, class weights, packed sequences, and optionally CRF.
+6. Add character/subword embeddings or a CRF to further improve BiLSTM robustness and BIO consistency.
 7. Add patterns for passport, account, date of birth, username, and address.
 8. Add deterministic, format-preserving pseudonymization.
 9. Add separately evaluated safe rewriting with a mandatory post-generation PII scan.

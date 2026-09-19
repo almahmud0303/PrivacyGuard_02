@@ -1,3 +1,5 @@
+import pytest
+
 from src.redection.privacy_firewall import privacy_guard
 from src.inference.model_service import analyze, available_models
 
@@ -20,7 +22,42 @@ def test_untrained_model_falls_back_without_crashing():
 
 def test_model_registry_contains_all_ui_models():
     assert set(available_models()) == {"Pattern detector", "BERT", "BiLSTM",
-        "Logistic Regression", "Naive Bayes", "SVM"}
+        "Logistic Regression", "Logistic Regression (Scratch)",
+        "Naive Bayes", "Naive Bayes (Scratch)", "SVM", "SVM (Scratch)"}
+
+@pytest.mark.parametrize("model_name", [
+    "Logistic Regression (Scratch)",
+    "Naive Bayes (Scratch)",
+    "SVM (Scratch)",
+])
+def test_scratch_registry_paths_use_their_vectorizer(monkeypatch, model_name):
+    import numpy as np
+    import src.inference.model_service as service
+
+    class Vectorizer:
+        def transform(self, texts):
+            assert texts == ["private text"]
+            return np.array([[1.0]])
+
+    class Classifier:
+        def predict(self, features):
+            assert features.shape == (1, 1)
+            return np.array([1])
+
+    monkeypatch.setattr(service, "available_models", lambda: {
+        model_name: {"ready": True, "kind": "classifier"}
+    })
+    monkeypatch.setattr(service, "_classical_model", lambda filename: {
+        "vectorizer": Vectorizer(),
+        "classifier": Classifier(),
+    })
+    result = service.analyze(
+        "private text",
+        model_name,
+        fallback=False,
+    )
+    assert result["model"] == model_name
+    assert result["classification"] == "PII"
 
 def test_multiword_person_location_and_nid_are_single_entities():
     result = privacy_guard("My name is Rysul aman nirob and I live in Dhaka Bangladesh. My NID is 1234567890.")

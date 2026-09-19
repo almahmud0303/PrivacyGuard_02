@@ -1,4 +1,3 @@
-"""Generate directly labeled multilingual PII NER data without rule-based annotation."""
 from __future__ import annotations
 
 import argparse

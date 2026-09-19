@@ -1,0 +1,98 @@
+{
+  "metrics": {
+    "model": "naive_bayes_scratch",
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "alpha": 1.0,
+    "features": 157,
+    "train_samples": 4800,
+    "test_samples": 1200,
+    "seed": 42
+  },
+  "top_safe_features": [
+    {
+      "feature": "live",
+      "log_odds": -6.004092423803952
+    },
+    {
+      "feature": "live at",
+      "log_odds": -6.004092423803952
+    },
+    {
+      "feature": "ami",
+      "log_odds": -5.993906819093771
+    },
+    {
+      "feature": "ami thaki",
+      "log_odds": -5.993906819093771
+    },
+    {
+      "feature": "thaki",
+      "log_odds": -5.993906819093771
+    },
+    {
+      "feature": "learning",
+      "log_odds": -5.524870027946321
+    },
+    {
+      "feature": "thaki dhaka",
+      "log_odds": -5.301616506711454
+    },
+    {
+      "feature": "at chittagong",
+      "log_odds": -5.272407489523874
+    },
+    {
+      "feature": "at dhaka",
+      "log_odds": -5.2414009860203254
+    },
+    {
+      "feature": "thaki chittagong",
+      "log_odds": -5.159844232546647
+    }
+  ],
+  "top_pii_features": [
+    {
+      "feature": "amar",
+      "log_odds": 4.945609360056424
+    },
+    {
+      "feature": "my",
+      "log_odds": 4.906774319888093
+    },
+    {
+      "feature": "com",
+      "log_odds": 4.84511850178004
+    },
+    {
+      "feature": "gmail",
+      "log_odds": 4.617596800683743
+    },
+    {
+      "feature": "gmail com",
+      "log_odds": 4.617596800683743
+    },
+    {
+      "feature": "number",
+      "log_odds": 4.602324813361158
+    },
+    {
+      "feature": "number is",
+      "log_odds": 4.602324813361158
+    },
+    {
+      "feature": "email",
+      "log_odds": 4.571882647646082
+    },
+    {
+      "feature": "rahim",
+      "log_odds": 4.430315183021133
+    },
+    {
+      "feature": "nid",
+      "log_odds": 4.389188859780368
+    }
+  ]
+}

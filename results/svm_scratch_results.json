@@ -1,0 +1,102 @@
+{
+  "metrics": {
+    "model": "svm_scratch",
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "epochs_completed": 2000,
+    "initial_loss": 1.0,
+    "final_loss": 0.07596367027118983,
+    "learning_rate": 0.5,
+    "l2": 0.01,
+    "features": 157,
+    "train_samples": 4800,
+    "test_samples": 1200,
+    "seed": 42
+  },
+  "top_safe_features": [
+    {
+      "feature": "learning",
+      "weight": -0.6095525172707534
+    },
+    {
+      "feature": "live",
+      "weight": -0.5940386973113251
+    },
+    {
+      "feature": "live at",
+      "weight": -0.5940386973113251
+    },
+    {
+      "feature": "ami",
+      "weight": -0.484666213091945
+    },
+    {
+      "feature": "ami thaki",
+      "weight": -0.484666213091945
+    },
+    {
+      "feature": "thaki",
+      "weight": -0.484666213091945
+    },
+    {
+      "feature": "beautiful day",
+      "weight": -0.3915988743177154
+    },
+    {
+      "feature": "day",
+      "weight": -0.3915988743177154
+    },
+    {
+      "feature": "is beautiful",
+      "weight": -0.3915988743177154
+    },
+    {
+      "feature": "today is",
+      "weight": -0.3915988743177154
+    }
+  ],
+  "top_pii_features": [
+    {
+      "feature": "amar",
+      "weight": 0.7886429500150585
+    },
+    {
+      "feature": "com",
+      "weight": 0.6392261630903343
+    },
+    {
+      "feature": "my",
+      "weight": 0.6162661401208072
+    },
+    {
+      "feature": "gmail",
+      "weight": 0.47843413690684966
+    },
+    {
+      "feature": "gmail com",
+      "weight": 0.47843413690684966
+    },
+    {
+      "feature": "phone",
+      "weight": 0.47025718613144024
+    },
+    {
+      "feature": "number",
+      "weight": 0.4656320194991426
+    },
+    {
+      "feature": "number is",
+      "weight": 0.4656320194991426
+    },
+    {
+      "feature": "john",
+      "weight": 0.4655680137133723
+    },
+    {
+      "feature": "email",
+      "weight": 0.46096228043246523
+    }
+  ]
+}
