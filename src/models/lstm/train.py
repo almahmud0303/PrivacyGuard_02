@@ -1,5 +1,6 @@
 import torch
 import json
+import argparse
 from pathlib import Path
 
 import torch.nn as nn
@@ -14,6 +15,13 @@ from src.models.transformer.labels import LABELS
 
 
 
+parser = argparse.ArgumentParser(description="Train the BiLSTM PII tagger")
+parser.add_argument("--epochs", type=int, default=3)
+parser.add_argument("--batch-size", type=int, default=128)
+parser.add_argument("--seed", type=int, default=42)
+args = parser.parse_args()
+
+torch.manual_seed(args.seed)
 device="cuda" if torch.cuda.is_available() else "cpu"
 
 project_root = Path(__file__).resolve().parents[3]
@@ -35,9 +43,10 @@ loader=DataLoader(
 
 dataset,
 
-batch_size=32,
+    batch_size=args.batch_size,
 
-shuffle=True
+    shuffle=True,
+    generator=torch.Generator().manual_seed(args.seed)
 
 )
 
@@ -74,7 +83,7 @@ optimizer=torch.optim.Adam(
 
 
 
-epochs=10
+epochs=args.epochs
 
 
 

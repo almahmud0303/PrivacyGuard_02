@@ -1,0 +1,7 @@
+{
+  "accuracy": 0.9999317933794107,
+  "entity_precision": 0.9998910794031152,
+  "entity_recall": 0.9998366280019605,
+  "entity_f1": 0.9998638529611982,
+  "recommended_threshold": 0.0
+}

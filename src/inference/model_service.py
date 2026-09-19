@@ -49,7 +49,13 @@ def available_models() -> dict[str, dict[str, str | bool | float]]:
             bert_ready = configured == LABELS
         except (KeyError, ValueError, TypeError, json.JSONDecodeError):
             pass
-    bilstm_ready = (MODEL_DIR / "bilstm_pii.pt").is_file() and (MODEL_DIR / "bilstm_labels.json").is_file()
+    bilstm_ready = False
+    bilstm_labels = MODEL_DIR / "bilstm_labels.json"
+    if (MODEL_DIR / "bilstm_pii.pt").is_file() and bilstm_labels.is_file():
+        try:
+            bilstm_ready = json.loads(bilstm_labels.read_text(encoding="utf-8")) == LABELS
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
     bert_threshold = .80
     inference_config = MODEL_DIR / "bert_pii" / "inference_config.json"
     if inference_config.is_file():
