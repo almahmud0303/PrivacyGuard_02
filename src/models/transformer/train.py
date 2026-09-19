@@ -107,10 +107,15 @@ def main() -> None:
             logits = model(input_ids=batch["input_ids"].to(device),
                            attention_mask=batch["attention_mask"].to(device)).logits
             loss = criterion(logits.view(-1, len(LABELS)), labels.view(-1)) / args.gradient_accumulation
-            loss.backward(); total_loss += loss.item() * args.gradient_accumulation
+
+            loss.backward(); # loss backward
+
+            total_loss += loss.item() * args.gradient_accumulation
             if step % args.gradient_accumulation == 0 or step == len(train_loader):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                optimizer.step(); scheduler.step(); optimizer.zero_grad()
+
+                optimizer.step(); scheduler.step(); optimizer.zero_grad() #optimizer
+
             if step == 1 or step % 100 == 0:
                 print(f"Epoch {epoch + 1}/{args.epochs} batch {step}/{len(train_loader)} loss={loss.item() * args.gradient_accumulation:.4f}")
 
