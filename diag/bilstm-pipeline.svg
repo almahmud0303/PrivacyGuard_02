@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="820" viewBox="0 0 1600 820" role="img" aria-labelledby="title desc">
+  <title id="title">PrivacyGuard BiLSTM pipeline architecture</title>
+  <desc id="desc">Complete BiLSTM training and inference flow from BIO data through embeddings, bidirectional LSTM, token classification, confidence filtering, risk scoring, and redaction.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7fcff"/><stop offset="1" stop-color="#e5f5fa"/></linearGradient>
+    <linearGradient id="data" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fbfeff"/><stop offset="1" stop-color="#d5eaf6"/></linearGradient>
+    <linearGradient id="model" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f4fff9"/><stop offset="1" stop-color="#c8ebdc"/></linearGradient>
+    <linearGradient id="result" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffdf4"/><stop offset="1" stop-color="#f4e6b8"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#17475e" flood-opacity=".2"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#075a79"/></marker>
+    <style>
+      .heading{font:700 30px Arial,sans-serif;fill:#081c26;text-anchor:middle}.lane{font:700 23px Arial,sans-serif;fill:#073d55}
+      .label{font:700 15px Arial,sans-serif;fill:#0b2029;text-anchor:middle}.small{font:13px Arial,sans-serif;fill:#17343f;text-anchor:middle}
+      .tiny{font:12px Arial,sans-serif;fill:#31505c;text-anchor:middle}.box{stroke:#09617f;stroke-width:1.8;filter:url(#shadow)}
+      .arrow{fill:none;stroke:#075a79;stroke-width:2.4;marker-end:url(#arrow)}.feedback{fill:none;stroke:#9b5f0d;stroke-width:2.2;stroke-dasharray:8 6;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1600" height="820" fill="url(#bg)"/><rect x="18" y="18" width="1564" height="784" rx="15" fill="none" stroke="#075a79" stroke-width="2"/>
+  <text x="800" y="56" class="heading">BiLSTM PII TOKEN-CLASSIFICATION PIPELINE</text>
+  <text x="80" y="104" class="lane" text-anchor="start">TRAINING</text>
+
+  <!-- Training input and preparation -->
+  <rect x="45" y="130" width="175" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="132" y="160" class="label">train.json</text><text x="132" y="184" class="small">tokens + BIO labels</text><text x="132" y="204" class="tiny">24,000 current records</text>
+  <rect x="255" y="130" width="195" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="352" y="156" class="label">PIIDataset</text><text x="352" y="179" class="small">word2idx vocabulary</text><text x="352" y="200" class="tiny">&lt;PAD&gt;=0, &lt;UNK&gt;=1</text>
+  <rect x="485" y="130" width="195" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="582" y="155" class="label">Encode + Align</text><text x="582" y="178" class="small">token IDs + 28 label IDs</text><text x="582" y="200" class="tiny">truncate/pad to max_len=32</text>
+  <rect x="715" y="130" width="185" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="807" y="155" class="label">DataLoader</text><text x="807" y="178" class="small">shuffle=True</text><text x="807" y="200" class="tiny">batch=128, seeded</text>
+  <path d="M220 175H255" class="arrow"/><path d="M450 175H485" class="arrow"/><path d="M680 175H715" class="arrow"/>
+
+  <!-- Model -->
+  <rect x="940" y="112" width="610" height="128" rx="14" class="box" fill="#ccebe1"/>
+  <rect x="960" y="130" width="170" height="90" rx="10" class="box" fill="url(#model)"/>
+  <text x="1045" y="155" class="label">Embedding</text><text x="1045" y="178" class="small">vocab x 100</text><text x="1045" y="200" class="tiny">[B,32] to [B,32,100]</text>
+  <rect x="1150" y="130" width="180" height="90" rx="10" class="box" fill="url(#model)"/>
+  <text x="1240" y="155" class="label">Bidirectional LSTM</text><text x="1240" y="178" class="small">hidden=128 each way</text><text x="1240" y="200" class="tiny">[B,32,256]</text>
+  <rect x="1350" y="130" width="180" height="90" rx="10" class="box" fill="url(#model)"/>
+  <text x="1440" y="155" class="label">Linear Head</text><text x="1440" y="178" class="small">256 to 28 logits</text><text x="1440" y="200" class="tiny">[B,32,28]</text>
+  <path d="M900 175H960" class="arrow"/><path d="M1130 175H1150" class="arrow"/><path d="M1330 175H1350" class="arrow"/>
+
+  <!-- Optimization -->
+  <rect x="250" y="280" width="260" height="88" rx="11" class="box" fill="url(#result)"/>
+  <text x="380" y="307" class="label">Cross-Entropy Loss</text><text x="380" y="331" class="small">flatten logits and labels</text><text x="380" y="352" class="tiny">ignore_index=-100 for padding</text>
+  <rect x="560" y="280" width="235" height="88" rx="11" class="box" fill="url(#result)"/>
+  <text x="677" y="308" class="label">Backpropagation</text><text x="677" y="332" class="small">loss.backward()</text><text x="677" y="352" class="tiny">all model parameters</text>
+  <rect x="845" y="280" width="235" height="88" rx="11" class="box" fill="url(#result)"/>
+  <text x="962" y="308" class="label">Adam Optimizer</text><text x="962" y="332" class="small">learning rate 0.001</text><text x="962" y="352" class="tiny">default 3 epochs</text>
+  <rect x="1130" y="270" width="375" height="108" rx="11" class="box" fill="url(#data)"/>
+  <text x="1317" y="298" class="label">Saved BiLSTM Artifacts</text>
+  <text x="1317" y="322" class="small">bilstm_pii.pt: state_dict, word2idx,</text><text x="1317" y="343" class="small">labels, max_len</text>
+  <text x="1317" y="364" class="tiny">bilstm_labels.json: ordered 28-label schema</text>
+  <path d="M1440 220V250H380V280" class="arrow"/><path d="M510 324H560" class="arrow"/><path d="M795 324H845" class="arrow"/><path d="M1080 324H1130" class="arrow"/>
+  <path d="M962 280V255H1240V220" class="feedback"/>
+
+  <line x1="45" y1="414" x2="1555" y2="414" stroke="#78aabd" stroke-width="1.5"/>
+  <text x="80" y="460" class="lane" text-anchor="start">INFERENCE</text>
+
+  <!-- Inference -->
+  <rect x="45" y="500" width="145" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="117" y="535" class="label">Raw Text</text><text x="117" y="560" class="small">original characters</text>
+  <rect x="225" y="500" width="180" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="315" y="526" class="label">Whitespace Spans</text><text x="315" y="550" class="small">first 32 tokens</text><text x="315" y="571" class="tiny">retain start/end offsets</text>
+  <rect x="440" y="500" width="190" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="535" y="526" class="label">Saved Vocabulary</text><text x="535" y="550" class="small">known ID or &lt;UNK&gt;=1</text><text x="535" y="571" class="tiny">pad remainder with 0</text>
+  <rect x="665" y="488" width="235" height="114" rx="11" class="box" fill="url(#model)"/>
+  <text x="782" y="515" class="label">Load Checkpoint + Eval</text><text x="782" y="539" class="small">Embedding to BiLSTM to Linear</text>
+  <text x="782" y="562" class="tiny">torch.inference_mode()</text><text x="782" y="583" class="tiny">CPU checkpoint loading supported</text>
+  <path d="M190 545H225" class="arrow"/><path d="M405 545H440" class="arrow"/><path d="M630 545H665" class="arrow"/>
+
+  <rect x="935" y="500" width="180" height="90" rx="11" class="box" fill="url(#model)"/>
+  <text x="1025" y="526" class="label">Softmax + Argmax</text><text x="1025" y="550" class="small">BIO label per token</text><text x="1025" y="571" class="tiny">token confidence</text>
+  <rect x="1150" y="500" width="185" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="1242" y="526" class="label">BIO Span Merge</text><text x="1242" y="550" class="small">join compatible I tags</text><text x="1242" y="571" class="tiny">minimum token confidence</text>
+  <rect x="1370" y="500" width="180" height="90" rx="11" class="box" fill="url(#result)"/>
+  <text x="1460" y="526" class="label">Threshold Filter</text><text x="1460" y="550" class="small">default 0.80</text><text x="1460" y="571" class="tiny">remove O and duplicates</text>
+  <path d="M900 545H935" class="arrow"/><path d="M1115 545H1150" class="arrow"/><path d="M1335 545H1370" class="arrow"/>
+
+  <rect x="530" y="665" width="215" height="90" rx="11" class="box" fill="url(#result)"/>
+  <text x="637" y="695" class="label">Risk Assignment</text><text x="637" y="719" class="small">LOW to CRITICAL</text><text x="637" y="740" class="tiny">highest score = overall risk</text>
+  <rect x="790" y="665" width="245" height="90" rx="11" class="box" fill="url(#result)"/>
+  <text x="912" y="695" class="label">Reverse-Offset Redaction</text><text x="912" y="719" class="small">replace exact original spans</text><text x="912" y="740" class="tiny">type-specific privacy markers</text>
+  <rect x="1080" y="665" width="235" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="1197" y="695" class="label">Structured Result</text><text x="1197" y="719" class="small">entities + safe_text + risk</text><text x="1197" y="740" class="tiny">source = bilstm</text>
+  <path d="M1460 590V630H637V665" class="arrow"/><path d="M745 710H790" class="arrow"/><path d="M1035 710H1080" class="arrow"/>
+  <rect x="1355" y="665" width="195" height="90" rx="11" class="box" fill="url(#data)"/>
+  <text x="1452" y="695" class="label">Application Output</text><text x="1452" y="719" class="small">Streamlit / Python</text><text x="1452" y="740" class="tiny">patterns only on failure</text>
+  <path d="M1315 710H1355" class="arrow"/>
+</svg>

@@ -1,732 +1,937 @@
-# PrivacyGuard — Multilingual PII Detection and Redaction
+# PrivacyGuard
 
-PrivacyGuard is a local NLP system for detecting personally identifiable information (PII), assigning a privacy-risk level, and producing redacted text. It supports English, Bengali, and Banglish text and provides several detectors for experimentation:
+PrivacyGuard is a multilingual NLP project for detecting and redacting personally identifiable information (PII) in English, Bengali, and Banglish/code-mixed text.
 
-- Pattern-based detection
-- Logistic Regression
-- Multinomial Naive Bayes
-- Linear Support Vector Machine (SVM)
-- Bidirectional LSTM (BiLSTM)
-- Multilingual BERT (mBERT)
+It includes:
 
-The Streamlit Model Lab lets you test these detectors from one interface. A FastAPI service is also included for local REST integration.
+- a rule and context detector;
+- Logistic Regression, Multinomial Naive Bayes, and Linear SVM document classifiers;
+- BiLSTM and multilingual BERT token classifiers;
+- span-safe redaction and privacy-risk scoring;
+- a Streamlit model-comparison interface;
+- a FastAPI pattern-scanning endpoint;
+- reproducible synthetic BIO data generation for the neural models.
 
-## 1. Main capabilities
+> Important: the included datasets are synthetic and template-generated. Saved scores show performance on this synthetic distribution, not production performance on unseen real-world text.
 
-- Detect names, locations, organizations, addresses, phone numbers, email addresses, national IDs, account numbers, cards, passports, medical IDs, employee IDs, student IDs, IP addresses, dates, health conditions, occupations, and education information.
-- Preserve multi-token entities such as `Sarah Ahmed`, `Dhaka University`, and `TechNova Solution Ltd.` as complete spans through BIO sequence labels.
-- Train and compare classical, recurrent neural, and Transformer models.
-- Calculate entity-level and overall privacy risk.
-- Redact detected character spans without changing unrelated text.
-- Test models through Streamlit and download the protected result.
-- Use a local FastAPI endpoint for pattern-based scans.
+## Contents
 
-## 2. System architecture
+1. [What the system does](#what-the-system-does)
+2. [Tasks and model choices](#tasks-and-model-choices)
+3. [Complete system architecture](#complete-system-architecture)
+4. [Supported entities and BIO labels](#supported-entities-and-bio-labels)
+5. [Project structure](#project-structure)
+6. [Installation](#installation)
+7. [Quick start](#quick-start)
+8. [Dataset pipelines](#dataset-pipelines)
+9. [Preprocessing and text representation](#preprocessing-and-text-representation)
+10. [Every model pipeline from start to finish](#every-model-pipeline-from-start-to-finish)
+11. [Inference, confidence, risk, and redaction](#inference-confidence-risk-and-redaction)
+12. [Training commands](#training-commands)
+13. [Evaluation and current results](#evaluation-and-current-results)
+14. [Streamlit application](#streamlit-application)
+15. [FastAPI service](#fastapi-service)
+16. [Testing](#testing)
+17. [Limitations and recommended improvements](#limitations-and-recommended-improvements)
+18. [Troubleshooting](#troubleshooting)
 
-```text
-                         TRAINING
+## What the system does
 
-Raw classification data ──> TF-IDF ──> LR / NB / SVM artifacts
-
-Synthetic multilingual NER data ──> BIO sequences
-                                  ├──> Vocabulary ──> BiLSTM artifact
-                                  └──> WordPiece ──> mBERT artifact
-
-
-                         INFERENCE
-
-User text
-   │
-   ├── Pattern detector ─────────────────────────────┐
-   ├── BiLSTM token classifier ──> BIO spans ────────┤
-   ├── mBERT token classifier ──> BIO spans ─────────┤
-   └── Classical document classifier ─> patterns ────┤
-                                                     ▼
-                                      Character-offset entities
-                                                     │
-                                      Risk scoring and filtering
-                                                     │
-                                             Span redaction
-                                                     ▼
-                                      Protected text and report
-```
-
-There are two different prediction tasks in this project:
-
-1. **Document classification:** Logistic Regression, Naive Bayes, and SVM decide whether an entire text is sensitive. They do not independently locate entity boundaries. When one of these models is selected, structured patterns provide the spans needed for display and redaction.
-2. **Token classification (NER):** BiLSTM and BERT assign a BIO label to each token. They can therefore learn both the entity type and its start/end boundary from annotated examples.
-
-## 3. Project structure
+Input:
 
 ```text
-NLP_PROJECT/
-├── app.py                         # Streamlit entry point
-├── api.py                         # FastAPI entry point
-├── train_all.py                   # Main training orchestrator
-├── requirements.txt
-├── data/
-│   ├── raw/
-│   │   └── pii_dataset.csv        # Document-classification data
-│   └── processed/
-│       ├── ner_dataset.json       # Complete NER dataset
-│       ├── train.json
-│       ├── validation.json
-│       └── test.json
-├── models_saved/                  # Trained model artifacts
-├── results/                       # Metrics and experiment output
-├── src/
-│   ├── app/app.py                 # Streamlit Model Lab
-│   ├── dataset/                   # Dataset generation and labels
-│   ├── features/                  # TF-IDF and n-gram features
-│   ├── inference/model_service.py # Unified model loading/inference
-│   ├── models/
-│   │   ├── baseline/              # LR, NB, and SVM training
-│   │   ├── lstm/                  # BiLSTM model and training
-│   │   └── transformer/           # BERT dataset/model/training
-│   ├── evaluation/                # BERT held-out evaluation
-│   └── redection/                 # Detection, risk, and redaction
-└── tests/
-    └── test_privacyguard.py
+My name is Rahim Ahmed. Email me at rahim@example.com or call 01712345678.
 ```
 
-The package name `redection` is used by the current imports and should be kept unchanged when running the project.
+Structured entity output contains the entity text, type, exact character offsets, confidence, source, and risk:
 
-## 4. Environment setup
+```json
+{
+  "entity": "rahim@example.com",
+  "type": "EMAIL",
+  "start": 36,
+  "end": 53,
+  "confidence": 0.99,
+  "source": "pattern",
+  "risk": "HIGH",
+  "score": 3
+}
+```
+
+Protected output:
+
+```text
+My name is [PERSON]. Email me at [EMAIL] or call [PHONE_NUMBER].
+```
+
+The application processes text locally and does not send it to an external generative API.
+
+## Tasks and model choices
+
+PrivacyGuard implements two different NLP tasks.
+
+| Task | Models | Output | Exact PII spans? |
+|---|---|---|---|
+| Entity detection / NER | Pattern detector, BiLSTM, BERT | Entity type, offsets, confidence | Yes |
+| Document classification | Logistic Regression, Naive Bayes, SVM | Entire text is `PII` or `SAFE` | No |
+
+The Streamlit application offers six choices:
+
+1. **Pattern detector** - finds structured patterns and selected contextual names/locations.
+2. **BERT** - model-only multilingual token classification.
+3. **BiLSTM** - model-only token classification with a learned word vocabulary.
+4. **Logistic Regression** - classifies the full input; patterns provide redaction spans.
+5. **Naive Bayes** - classifies the full input; patterns provide redaction spans.
+6. **SVM** - classifies the full input; patterns provide redaction spans.
+
+If a learned model is unavailable, incompatible, or fails, optional safe fallback uses the pattern detector.
+
+## Complete system architecture
+
+![PrivacyGuard complete system architecture](diag/architecture.jpg)
+
+## Supported entities and BIO labels
+
+The shared neural schema is defined in `src/models/transformer/labels.py`.
+
+| Entity | Example | Risk |
+|---|---|---|
+| `PERSON` | Rahim Ahmed | MEDIUM |
+| `LOCATION` | Dhaka | LOW |
+| `ORGANIZATION` | BRAC Bank | MEDIUM |
+| `ADDRESS` | House 25 Road 7 Dhanmondi | HIGH |
+| `PHONE` | 01712345678 | HIGH |
+| `EMAIL` | user@example.com | HIGH |
+| `NID` | 1234567890 | CRITICAL |
+| `CREDIT_CARD` | 4532 0151 1283 0366 | CRITICAL |
+| `ACCOUNT` | AC0123456789 | CRITICAL |
+| `EMPLOYEE_ID` | EMP-45892 | HIGH |
+| `MEDICAL_ID` | MED-32145 | CRITICAL |
+| `STUDENT_ID` | CSE-2024-1025 | HIGH |
+| `IP_ADDRESS` | 192.168.10.5 | HIGH |
+| `DATE` | 21 February 2001 | MEDIUM |
+| `PASSPORT` | A1234567 | CRITICAL |
+| `HEALTH_CONDITION` | high blood pressure | CRITICAL |
+| `OCCUPATION` | software engineer | MEDIUM |
+| `EDUCATION` | Computer Science | MEDIUM |
+
+### BIO representation
+
+- `B-TYPE`: first token of an entity.
+- `I-TYPE`: continuation token of a multi-token entity.
+- `O`: token outside an entity.
+- `-100`: training-only ignore value for padding and repeated BERT subword pieces.
+
+| Token | Label |
+|---|---|
+| Rahim | `B-PERSON` |
+| Ahmed | `I-PERSON` |
+| lives | `O` |
+| in | `O` |
+| New | `B-LOCATION` |
+| York | `I-LOCATION` |
+
+Nine types support `I-` labels: `PERSON`, `LOCATION`, `ORGANIZATION`, `ADDRESS`, `CREDIT_CARD`, `DATE`, `HEALTH_CONDITION`, `OCCUPATION`, and `EDUCATION`.
+
+The complete schema has 28 labels:
+
+```text
+1 O label + 18 B labels + 9 I labels = 28 labels
+```
+
+The pattern detector directly recognizes structured `EMAIL`, `PHONE`, `NID`, valid `CREDIT_CARD`, and `IP_ADDRESS` values, plus selected contextual `PERSON` and `LOCATION` spans. The neural dataset and redactor support all 18 types.
+
+## Project structure
+
+```text
+PrivacyGuard_02/
+|-- app.py                         # Streamlit entry point
+|-- api.py                         # FastAPI pattern-scanning service
+|-- train_all.py                   # Main training orchestrator
+|-- requirements.txt
+|-- data/
+|   |-- raw/pii_dataset.csv
+|   +-- processed/
+|       |-- classification_dataset.csv
+|       |-- ner_dataset.json
+|       |-- train.json
+|       |-- validation.json
+|       +-- test.json
+|-- models_saved/
+|   |-- logistic_regression.joblib
+|   |-- naive_bayes.joblib
+|   |-- svm.joblib
+|   |-- bilstm_pii.pt
+|   |-- bilstm_labels.json
+|   +-- bert_pii/
+|       |-- config.json
+|       |-- model.safetensors
+|       |-- tokenizer.json
+|       +-- inference_config.json
+|-- results/
+|   |-- baseline_results.csv
+|   |-- bert_metrics.json
+|   +-- bert_test_metrics.json
+|-- src/
+|   |-- app/app.py
+|   |-- dataset/
+|   |-- evaluation/evaluate_bert.py
+|   |-- features/
+|   |-- inference/model_service.py
+|   |-- models/lstm/
+|   |-- models/transformer/
+|   |-- preprocessing/
+|   +-- redection/                  # Existing package name
+|-- tests/test_privacyguard.py
++-- notebooks/01_EDA.ipynb
+```
+
+## Installation
 
 ### Requirements
 
 - Python 3.10 or 3.11 is recommended.
-- Git
-- At least 8 GB RAM for classical models and BiLSTM
-- More memory and an NVIDIA CUDA GPU are strongly recommended for full BERT training
+- At least 8 GB RAM is recommended.
+- A CUDA-capable NVIDIA GPU is optional but strongly recommended for BERT.
+- Internet is required the first time the mBERT base model/tokenizer is downloaded.
 
 ### Windows PowerShell
 
-Run every command from the project root:
-
 ```powershell
-cd "E:\academic\4.1\NLP_lab\NLP_PROJECT"
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+cd C:\nlp\PrivacyGuard_02
+py -3.11 -m venv venv
+.\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If PowerShell blocks virtual-environment activation, allow it for the current terminal:
+If PowerShell blocks activation:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
+.\venv\Scripts\Activate.ps1
 ```
 
 ### Linux or macOS
 
 ```bash
-cd /path/to/NLP_PROJECT
-python3 -m venv .venv
-source .venv/bin/activate
+cd PrivacyGuard_02
+python3 -m venv venv
+source venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Confirm that the package imports correctly:
+### Optional CUDA-enabled PyTorch
 
-```bash
-python -c "from src.inference.model_service import ModelService; print(ModelService().available_models())"
+The normal requirements installation may install CPU-only PyTorch. Use the official PyTorch installation selector for the CUDA wheel compatible with the operating system and driver:
+
+<https://pytorch.org/get-started/locally/>
+
+Verify the active environment:
+
+```powershell
+python -c "import torch; print('version:', torch.__version__); print('CUDA build:', torch.version.cuda); print('CUDA available:', torch.cuda.is_available()); print('device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
 
-## 5. Dataset design
+Having an NVIDIA GPU does not guarantee that the current Python environment uses it. `torch.cuda.is_available()` must return `True`.
 
-### 5.1 Document-classification dataset
+## Quick start
 
-`data/raw/pii_dataset.csv` is used by the classical models. Each row contains text and a document-level class indicating whether the text contains sensitive information. The classical pipeline converts a complete input into a TF-IDF vector and predicts one class for the whole document.
+Run the saved models in Streamlit:
 
-This data is suitable for questions such as:
-
-> Does this message contain PII?
-
-It is not sufficient by itself for questions such as:
-
-> Which exact characters form the person's name?
-
-Exact span detection requires the NER dataset.
-
-### 5.2 Multilingual NER dataset
-
-`data/processed/ner_dataset.json` contains token sequences and a label for every token. It is generated from varied templates and value pools in English, Bengali, and Banglish. Entity values are inserted into labeled slots, so annotation is created from the data-generation structure rather than guessed afterward with regular expressions.
-
-The default generation command creates 30,000 examples and reproducible train, validation, and test splits:
-
-```bash
-python -m src.dataset.generate_ner_dataset --samples 30000
+```powershell
+cd C:\nlp\PrivacyGuard_02
+.\venv\Scripts\Activate.ps1
+python -m streamlit run app.py
 ```
 
-The default split is:
+Run the tests:
 
-- Training: 80%, or 24,000 examples
-- Validation: 10%, or 3,000 examples
-- Test: 10%, or 3,000 examples
+```powershell
+python -m pytest
+```
 
-The random seed is fixed for reproducibility.
+Inspect model readiness:
 
-### 5.3 Entity types
+```powershell
+python -c "from pprint import pprint; from src.inference.model_service import available_models; pprint(available_models())"
+```
 
-The NER models support these entity classes:
+Use Python inference:
 
-| Group | Entity types |
+```python
+from src.inference.model_service import analyze
+
+result = analyze(
+    "My name is Rahim Ahmed. Call me at 01712345678.",
+    model_name="BERT",
+    threshold=0.80,
+    fallback=True,
+)
+
+print(result["entities"])
+print(result["safe_text"])
+```
+
+## Dataset pipelines
+
+### Document-classification data
+
+The classical models use `data/processed/classification_dataset.csv`.
+
+| Column | Meaning |
 |---|---|
-| Identity | `PERSON`, `NID`, `PASSPORT` |
-| Contact | `PHONE`, `EMAIL`, `ADDRESS`, `IP_ADDRESS` |
-| Place and organization | `LOCATION`, `ORGANIZATION` |
-| Financial | `ACCOUNT`, `CREDIT_CARD` |
-| Employment and study | `EMPLOYEE_ID`, `STUDENT_ID`, `OCCUPATION`, `EDUCATION` |
-| Medical | `MEDICAL_ID`, `HEALTH_CONDITION` |
-| General context | `DATE` |
+| `id` | Record identifier |
+| `text` | Complete input sentence |
+| `label` | `1` for PII and `0` for safe text |
 
-### 5.4 BIO annotation
+The current file has 6,000 records: 3,730 PII and 2,270 safe. During training, `train_all.py` performs a stratified 80/20 split with `random_state=42`. TF-IDF is fitted only on training data because it is inside each scikit-learn pipeline.
 
-BIO labels encode both type and boundary:
+`src/dataset/create_dataset.py` and `create_labels.py` are legacy builders. They generate simple templates and weak labels based mainly on phone, email, and 10-digit patterns. They are not called automatically by `train_all.py`.
 
-- `B-TYPE`: first token of an entity
-- `I-TYPE`: continuation token of the same entity
-- `O`: token outside all entities
+### Neural NER data
 
-Example:
+Generate 30,000 multilingual records:
 
-```text
-Token:  My      name    is      Sarah       Ahmed       from      Dhaka
-Label:  O       O       O       B-PERSON    I-PERSON    O         B-LOCATION
+```powershell
+python -m src.dataset.generate_ner_dataset --samples 30000 --seed 42
 ```
 
-Because `Sarah` starts the person and `Ahmed` continues it, inference merges them into one `PERSON` span. Correct BIO consistency is essential: an `I-PERSON` token should not start an unrelated entity.
-
-Multi-token BIO labels are enabled for names, locations, organizations, addresses, cards, dates, health conditions, occupations, and education entities. Single-token identifiers can still contain punctuation or digits as one lexical token.
-
-### 5.5 Improving dataset quality
-
-Maximum accuracy cannot be guaranteed by increasing the sample count alone. For reliable real-world performance, the training data should contain:
-
-- Many names and locations that do not repeat between train and test sets
-- English, Bengali script, and natural Banglish spelling variations
-- Long messages with several entity types in the same paragraph
-- Negative examples containing ordinary numbers and capitalized words
-- Hard examples such as phone numbers versus NIDs versus account numbers
-- Spelling mistakes, punctuation, honorifics, and code-mixed sentences
-- Organization, hospital, university, job, and address contexts
-- Manually reviewed real examples with consent and safely anonymized values
-
-Never place real secrets or unapproved personal data in the repository. Synthetic data is useful for bootstrapping, but a manually reviewed, representative validation and test set is necessary to measure real accuracy.
-
-## 6. Preprocessing and token alignment
-
-PrivacyGuard preserves character positions because redaction ultimately operates on the original input. Aggressive cleaning can destroy those positions, so normalization must not silently rewrite the inference text before offsets are calculated.
-
-The main preprocessing responsibilities are:
-
-- Unicode-aware handling for Bengali and Latin text
-- Stable token boundaries for words, punctuation, emails, phone numbers, and IDs
-- Padding and truncation for fixed-size neural batches
-- Label alignment between source words and model tokens
-- Ignoring padding and non-supervised subword positions in the loss
-
-For BERT, a word can be divided into several WordPiece tokens. The first subword receives the word's BIO label; later subwords use `-100` so PyTorch excludes them from cross-entropy loss. During inference, WordPiece predictions are mapped back to source character offsets before adjacent BIO tokens are joined.
-
-## 7. Model architectures and operation
-
-### 7.1 Pattern detector
-
-The pattern detector is a deterministic baseline and safety option. It does not require training.
-
-**Architecture**
-
-```text
-Original text
-   ├── Regular expressions for structured identifiers
-   ├── Context rules for selected names and locations
-   └── Candidate overlap resolution
-                ↓
-      Typed character spans
-```
-
-Regular expressions are well suited to values with recognizable structure, including emails, Bangladeshi phone numbers, NIDs, cards, accounts, and IP addresses. Context rules use nearby phrases such as “my name is” or location indicators to propose less structured spans. Candidate spans are ranked and overlaps are resolved so the same characters are not redacted twice.
-
-**Strengths:** fast, explainable, deterministic, and useful when no trained artifact is available.
-
-**Limitations:** it cannot learn arbitrary names or locations, and rules require maintenance as formats change. It is a safety layer for structured PII, not a replacement for a trained NER model.
-
-### 7.2 Shared TF-IDF architecture for classical models
-
-Logistic Regression, Naive Bayes, and SVM share the same feature stage:
-
-```text
-Document
-   ↓
-Word unigrams and bigrams
-   ↓
-TF-IDF weighting (maximum 10,000 features)
-   ↓
-Sparse document vector
-```
-
-Term frequency represents how often a feature occurs in a document. Inverse document frequency reduces the influence of terms that appear in most documents. Word bigrams add short phrases such as `phone number` or `national id` that are more informative than individual words.
-
-#### Logistic Regression
-
-Logistic Regression learns one weight per TF-IDF feature plus an intercept. The dot product between the document vector and learned weights is converted to a probability with a logistic function. Features strongly associated with PII acquire positive weights; features associated with safe text acquire negative weights.
-
-```text
-TF-IDF vector x ──> z = w·x + b ──> sigmoid(z) ──> document class
-```
-
-It is usually a strong, fast, interpretable text baseline. Its limitation is that it predicts a document class and does not emit token-level entity spans.
-
-#### Multinomial Naive Bayes
-
-Naive Bayes estimates how likely each feature is under each class and combines those likelihoods with the class prior. It makes the simplifying assumption that features are conditionally independent given the class.
-
-```text
-TF-IDF features ──> class priors + feature likelihoods ──> most probable class
-```
-
-It trains very quickly and works well on many sparse text problems. Correlated phrases and subtle long-range context are weaknesses because the independence assumption does not model sequence structure.
-
-#### Linear SVM
-
-Linear SVM learns a separating hyperplane with the largest possible margin between sensitive and non-sensitive training examples.
-
-```text
-TF-IDF vector ──> signed distance from hyperplane ──> document class
-```
-
-The large-margin objective often performs strongly with high-dimensional sparse text. The implementation is a linear document classifier, not a sequence labeler; it therefore relies on the structured detector to produce redaction spans in the application.
-
-### 7.3 BiLSTM sequence labeler
-
-The BiLSTM is a neural named-entity recognizer that predicts one BIO label for every input word.
-
-**Architecture**
-
-```text
-Whitespace tokens (maximum length 32)
-                ↓
-Vocabulary lookup and padding
-                ↓
-100-dimensional trainable embedding
-                ↓
-Bidirectional LSTM, hidden size 128 per direction
-        ┌──────────────┴──────────────┐
-        │ forward context             │ backward context
-        └──────────────┬──────────────┘
-                256-dimensional state
-                          ↓
-                Linear classification head
-                          ↓
-              BIO logits for every token
-```
-
-The forward LSTM reads left to right and the backward LSTM reads right to left. Their hidden states are concatenated, so a token prediction can use words on both sides. A linear layer maps the 256-dimensional combined state to the BIO label vocabulary.
-
-Training uses cross-entropy loss with padding positions set to `-100`, Adam with a default learning rate of `0.001`, and a default 10 epochs. The saved checkpoint contains the network weights, word-to-index vocabulary, label list, and maximum length needed for identical inference behavior.
-
-At inference time, tokens are converted to vocabulary IDs, padded, processed by the network, and normalized with softmax. BIO predictions are merged into spans and mapped to character offsets. Unknown words use the vocabulary's unknown token; consequently, vocabulary diversity is important. The short maximum sequence length also means long inputs should be expanded through chunking or a larger configured limit in future experiments.
-
-### 7.4 Multilingual BERT token classifier
-
-The Transformer model fine-tunes `google-bert/bert-base-multilingual-cased` for token classification. This multilingual encoder can represent English, Bengali, and mixed-script text in a shared contextual space.
-
-**Architecture**
-
-```text
-Original words
-    ↓
-Multilingual WordPiece tokenizer
-    ↓
-Token + position + segment embeddings
-    ↓
-Stack of bidirectional Transformer encoder blocks
-    ├── Multi-head self-attention
-    ├── Residual connection and normalization
-    ├── Feed-forward network
-    └── Residual connection and normalization
-    ↓
-Contextual representation for every subword
-    ↓
-Linear token-classification head
-    ↓
-BIO label logits
-```
-
-Self-attention allows each token to weigh relevant tokens anywhere in the input. For example, a number can be interpreted differently when preceded by `phone`, `national id`, `account`, or `medical id`. Unlike the BiLSTM's step-by-step recurrence, attention processes relationships between all visible positions directly.
-
-The training dataset uses a maximum sequence length of 256. Only the first subword of each source word is supervised; special tokens, padding, and continuation subwords receive the ignored label `-100`. The loss is class-weighted cross entropy: rare entity labels receive more weight, while the dominant `O` class is capped so it does not overwhelm entity learning.
-
-Optimization uses AdamW, a default learning rate of `2e-5`, weight decay, a linear learning-rate schedule with warmup, gradient clipping, and optional gradient accumulation. Validation runs after each epoch. The checkpoint with the best entity-token F1 is saved, and a confidence threshold is calibrated on validation predictions.
-
-Inference loads the local tokenizer, model, label mapping, and calibrated threshold. Token probabilities come from softmax. Predictions are aligned back to source words, BIO segments are merged, and character offsets are recovered for risk scoring and redaction.
-
-**Strengths:** contextual multilingual representations, subword handling, and the strongest potential for previously unseen names and phrases.
-
-**Limitations:** higher training cost, sensitivity to label quality and class imbalance, and no guarantee of recognizing entity distributions absent from training data. A high synthetic-data score should always be confirmed on manually reviewed real-world text.
-
-### 7.5 Model comparison
-
-| Model | Prediction level | Learns boundaries | Main advantage | Main limitation |
-|---|---|---:|---|---|
-| Pattern | Character span | Rule-defined | Fast and deterministic | Cannot generalize like NER |
-| Logistic Regression | Document | No | Fast, interpretable baseline | No learned spans/context |
-| Naive Bayes | Document | No | Extremely fast training | Strong independence assumption |
-| Linear SVM | Document | No | Strong sparse-text margin | No learned spans/probability by default |
-| BiLSTM | Token | Yes | Learns sequential context | Fixed vocabulary and short sequences |
-| mBERT | Subword/token | Yes | Contextual and multilingual | Most computationally expensive |
-
-## 8. Training commands
-
-Run commands from the repository root with the virtual environment active.
-
-### 8.1 Train classical models
-
-```bash
-python train_all.py
-```
-
-This trains Logistic Regression, Naive Bayes, and Linear SVM and writes their artifacts under `models_saved/`. Baseline metrics are written to `results/baseline_results.csv`.
-
-### 8.2 Train BiLSTM
-
-Generate 30,000 NER examples and train the BiLSTM:
-
-```bash
-python train_all.py --skip-classical --bilstm --ner-samples 30000
-```
-
-Reuse existing NER splits instead of generating them again:
-
-```bash
-python train_all.py --skip-classical --bilstm --skip-ner-generation
-```
-
-### 8.3 Train BERT
-
-Full training command:
-
-```bash
-python train_all.py --skip-classical --bert --bert-samples 0 --ner-samples 30000 --bert-epochs 3 --bert-batch-size 8
-```
-
-`--bert-samples 0` means use the complete generated training split. On a CPU, this can take much longer than a few minutes. Training time depends on the processor/GPU, memory, disk speed, sequence lengths, and whether model files are already cached.
-
-For a quick pipeline test, use a small subset and one epoch:
-
-```bash
-python train_all.py --skip-classical --bert --bert-samples 100 --ner-samples 1000 --bert-epochs 1 --bert-batch-size 4
-```
-
-This quick command verifies that training and saving work; it is not intended to produce an accurate production model.
-
-If GPU memory is limited, lower the physical batch size and accumulate gradients:
-
-```bash
-python train_all.py --skip-classical --bert --bert-samples 0 --skip-ner-generation --bert-epochs 3 --bert-batch-size 4 --bert-gradient-accumulation 2
-```
-
-The effective batch size in this example is `4 × 2 = 8` without storing all eight samples in memory simultaneously.
-
-### 8.4 Train every model
-
-```bash
-python train_all.py --bilstm --bert --ner-samples 30000 --bert-samples 0 --bert-epochs 3 --bert-batch-size 8
-```
-
-### 8.5 Important training options
-
-| Option | Meaning |
-|---|---|
-| `--skip-classical` | Do not train LR, NB, and SVM |
-| `--bilstm` | Train the BiLSTM sequence labeler |
-| `--bert` | Fine-tune BERT and evaluate the best checkpoint |
-| `--ner-samples N` | Generate `N` NER examples |
-| `--skip-ner-generation` | Reuse the existing train/validation/test files |
-| `--bert-samples N` | Limit BERT training examples; `0` uses all |
-| `--bert-epochs N` | Set the number of BERT epochs |
-| `--bert-batch-size N` | Set BERT's physical batch size |
-| `--bert-gradient-accumulation N` | Accumulate gradients across `N` batches |
-
-## 9. Evaluation
-
-### Classical results
-
-Classical training records accuracy, precision, recall, and F1 in:
-
-```text
-results/baseline_results.csv
-```
-
-These are document-level classification metrics and must not be compared directly with token- or entity-level NER metrics without clearly labeling the task.
-
-### BERT validation and test results
-
-During training, BERT records epoch history and selects the best validation checkpoint. The pipeline measures token accuracy and entity-token micro precision, recall, and F1 while excluding the `O` class from entity metrics.
-
-Training history:
-
-```text
-results/bert_metrics.json
-```
-
-Held-out test evaluation runs automatically after BERT training. It can also be run manually:
-
-```bash
-python -m src.evaluation.evaluate_bert --batch-size 8
-```
-
-Test metrics:
-
-```text
-results/bert_test_metrics.json
-```
-
-For research reporting, also evaluate exact entity spans. A prediction should count as correct only when both its type and complete boundary match the reference. Review false positives, false negatives, type confusion, broken multi-word spans, and performance separately for English, Bengali, and Banglish.
-
-Avoid tuning on the test set. Use training data to learn weights, validation data to select settings and confidence thresholds, and the test set once for the final unbiased report.
-
-## 10. Unified inference flow
-
-`src/inference/model_service.py` is the common interface used by the Streamlit app. It checks whether the requested artifact is ready, loads it when needed, and returns a consistent result containing:
-
-- Requested and actually used model
-- Detected entity text and type
-- Confidence and source
-- Start and end character positions
-- Per-entity and overall risk
-- Protected text
-- Warning or fallback information
-
-Behavior differs by model family:
-
-- Pattern mode directly returns structured and contextual spans.
-- BiLSTM and BERT return their own learned BIO spans when inference succeeds.
-- Classical models classify the entire text; patterns locate the spans used for redaction.
-- If an artifact is unavailable or a neural model raises an error, optional safe fallback can run the pattern detector instead of crashing the UI.
-
-The fallback is clearly reported so pattern results are not mistaken for neural predictions.
-
-## 11. Privacy risk scoring
-
-Every detected type has a severity weight. The highest entity severity becomes the overall result.
-
-| Risk | Weight | Examples |
+The generator:
+
+1. creates entity values and English, Bengali, Banglish, long-form, and negative templates;
+2. assigns BIO labels directly while inserting entities;
+3. shuffles with a local seeded generator;
+4. writes the full dataset;
+5. creates an 80/10/10 train, validation, and test split.
+
+| File | Current records | Purpose |
 |---|---:|---|
-| Low | 1 | Location |
-| Medium | 2 | Person, organization, date, occupation, education |
-| High | 3 | Phone, email, IP address, address, employee ID, student ID |
-| Critical | 4 | NID, passport, account, card, medical ID, health condition |
+| `ner_dataset.json` | 30,000 | Complete dataset |
+| `train.json` | 24,000 | BiLSTM/BERT fitting |
+| `validation.json` | 3,000 | BERT checkpoint/threshold selection |
+| `test.json` | 3,000 | Held-out BERT evaluation |
 
-Risk is a configurable application policy, not a legal conclusion. Adjust the mapping for the jurisdiction and use case before deployment.
-
-## 12. Redaction engine
-
-Only entities at or above the selected confidence threshold are redacted. Each accepted entity is represented by original-text character offsets:
+Record format:
 
 ```json
 {
-  "entity": "Sarah Ahmed",
-  "type": "PERSON",
-  "start": 11,
-  "end": 22,
-  "confidence": 0.94
+  "tokens": ["Rahim", "Ahmed", "lives", "in", "Dhaka", "."],
+  "labels": ["B-PERSON", "I-PERSON", "O", "O", "B-LOCATION", "O"]
 }
 ```
 
-The engine replaces accepted spans with typed placeholders such as `[PERSON]`, `[PHONE]`, or `[NID]`. Replacements are applied from right to left, preventing an early replacement from shifting the offsets of later entities.
+### Reproducibility
 
-Example:
+- Neural generation is reproducible with the same `--samples` and `--seed`.
+- Neural training seeds Python/PyTorch, though exact GPU output can still vary.
+- Classical splitting uses random state 42.
+- The legacy classification generator does not set a random seed.
 
-```text
-Before: My name is Sarah Ahmed and my phone is +8801712345678.
-After:  My name is [PERSON] and my phone is [PHONE].
-```
-
-## 13. Run the Streamlit application
-
-Start the Model Lab:
-
-```bash
-streamlit run app.py
-```
-
-Open:
+`--ner-samples` is the total before splitting:
 
 ```text
-http://localhost:8501
+--ner-samples 1500 -> 1200 train + 150 validation + 150 test
 ```
 
-The sidebar provides:
+`--bert-samples 0` means the complete training split. A positive value limits BERT training records.
 
-- Detector selection
-- Artifact readiness status
-- Minimum redaction confidence
-- Safe-fallback control
+## Preprocessing and text representation
 
-The main panel accepts custom or example text, runs the selected model, displays the model actually used, overall risk, protected text, and a table of detected spans. Protected text can be downloaded.
+The project does not apply one identical pipeline to all models. Each architecture needs different input preservation.
 
-When the UI says an artifact is not ready, train that model first and restart Streamlit. Streamlit caches model resources for faster reruns, so restarting is the simplest way to guarantee that a newly saved artifact is loaded.
+### Runtime span tokenization
 
-## 14. Run the FastAPI service
+`_lexical_spans()` in `src/inference/model_service.py`:
 
-Start the backend:
+- finds non-whitespace tokens;
+- separates edge punctuation;
+- preserves exact character offsets;
+- keeps emails, phones, `EMP-45892`, and `CSE-2024-1025` together.
 
-```bash
-python api.py
-```
+Offsets matter because redaction slices the original text.
 
-Interactive API documentation is available at:
+### Classical TF-IDF processing
+
+The active scikit-learn vectorizer:
+
+- lowercases by default;
+- uses its default word token pattern;
+- uses no explicit stop-word list;
+- uses no stemming;
+- uses no lemmatization;
+- extracts word unigrams and bigrams;
+- keeps at most 10,000 features.
+
+For `"my phone number"`:
 
 ```text
-http://127.0.0.1:8000/docs
+unigrams: "my", "phone", "number"
+bigrams:  "my phone", "phone number"
 ```
 
-Health check:
+TF-IDF emphasizes terms frequent in one document but less common across the collection.
+
+### Is this an n-gram language model?
+
+No. `ngram_range=(1, 2)` creates classifier features. It does not predict the next word or generate text.
+
+`src/features/ngram_features.py` contains experimental word 1-to-3-gram and character 3-to-5-gram count utilities. They are not connected to `train_all.py`.
+
+### Legacy preprocessing
+
+`src/preprocessing/` contains:
 
 ```text
-GET http://127.0.0.1:8000/health
+NFKC Unicode normalization
+  -> repeated-character reduction
+  -> HTML/URL/special-character cleaning
+  -> lowercase
+  -> NLTK tokenization
+  -> informal spelling/noise mapping
 ```
 
-Pattern-based scan example:
+However:
+
+- `remove_stopwords()` exists but is not called;
+- stemming is not implemented;
+- lemmatization is not implemented;
+- this pipeline is not used by active model training;
+- its ASCII-only cleaner removes Bengali letters, so it should not be added to multilingual NER unchanged.
+
+## Every model pipeline from start to finish
+
+### 1. Pattern and context detector
+
+Code: `src/redection/entity_detector.py`
+
+```text
+raw text
+  -> structured regex candidates
+       email, Bangladesh phone, NID, IP, card candidate
+  -> Luhn validation for cards
+  -> contextual PERSON candidates
+  -> contextual/gazetteer LOCATION candidates
+  -> overlap resolution
+       pattern > context > gazetteer > whole-name phrase
+  -> ordered exact spans
+  -> fixed confidence and risk
+  -> thresholded redaction
+```
+
+Properties:
+
+- no training required;
+- manually assigned confidence values;
+- Bengali digits supported for numeric validation;
+- high speed and exact offsets;
+- direct coverage is narrower than the neural schema.
+
+Real scenario: a help-desk system can use it as a fast safety layer before tickets are stored or forwarded.
+
+### 2. Shared classical pipeline
+
+```text
+classification_dataset.csv
+  -> remove missing text/label
+  -> stratified 80/20 split, seed 42
+  -> TF-IDF: word (1,2)-grams, maximum 10,000 features
+  -> classifier fit
+  -> document PII/SAFE prediction
+  -> weighted metrics
+  -> joblib artifact
+```
+
+Application inference:
+
+```text
+input -> saved TF-IDF + classifier -> PII/SAFE
+      -> pattern detector for spans -> protected text
+```
+
+The classifier cannot locate which characters caused its prediction.
+
+#### Logistic Regression
+
+```text
+TF-IDF x -> linear score w.x + b -> binary decision -> PII/SAFE
+```
+
+Configuration: `max_iter=1000` and `class_weight="balanced"`.
+
+Artifact: `models_saved/logistic_regression.joblib`
+
+#### Multinomial Naive Bayes
+
+```text
+TF-IDF -> class priors and feature likelihoods
+       -> compare class scores -> PII/SAFE
+```
+
+This is a fast baseline, but its feature-independence assumption is simplified.
+
+Artifact: `models_saved/naive_bayes.joblib`
+
+#### Linear SVM
+
+```text
+TF-IDF -> maximum-margin linear boundary -> signed score -> PII/SAFE
+```
+
+Configuration: `class_weight="balanced"`. The current SVM does not expose calibrated probabilities.
+
+Artifact: `models_saved/svm.joblib`
+
+### 3. BiLSTM sequence labeler
+
+Code: `src/models/lstm/`
+
+![PrivacyGuard BiLSTM pipeline architecture](diag/bilstm-pipeline.svg)
+
+Training:
+
+```text
+train.json
+  -> vocabulary: <PAD>=0, <UNK>=1
+  -> token IDs, pad/truncate to 32
+  -> embedding: vocabulary_size x 100
+  -> bidirectional LSTM: hidden 128 per direction
+  -> concatenate directions: 256 values/token
+  -> linear layer: 256 -> 28 label logits
+  -> cross-entropy, ignore padding label -100
+  -> Adam, learning rate 0.001
+  -> save weights + vocabulary + labels + max length
+```
+
+Output shape:
+
+```text
+[batch_size, 32, 28]
+```
+
+Inference:
+
+```text
+text -> first 32 token spans -> saved vocabulary IDs
+     -> BiLSTM -> softmax BIO labels
+     -> merge compatible I tags
+     -> confidence threshold -> risk -> redaction
+```
+
+Padding uses `-100` rather than `O`, and `CrossEntropyLoss(ignore_index=-100)` prevents empty positions from being learned as outside tokens.
+
+The checkpoint stores its vocabulary because rebuilding it can assign different IDs and cause incorrect output or size errors.
+
+Artifacts:
+
+- `models_saved/bilstm_pii.pt`
+- `models_saved/bilstm_labels.json`
+
+Strengths: bidirectional context, relatively small, and educationally clear.
+
+Limitations: unknown-word problem, 32-token maximum, and no validation/best-checkpoint loop.
+
+### 4. Multilingual BERT token classifier
+
+Base model: `google-bert/bert-base-multilingual-cased`
+
+Code: `src/models/transformer/` and `src/evaluation/evaluate_bert.py`
+
+![PrivacyGuard multilingual BERT pipeline architecture](diag/bert-pipeline.svg)
+
+Training:
+
+```text
+train.json
+  -> fast mBERT tokenizer with pre-split words
+  -> WordPiece subwords and word_ids alignment
+       first subword gets the word label
+       other subwords/special/padding get -100
+  -> pad/truncate to 256 subwords
+  -> multilingual BERT encoder
+  -> token head: hidden state -> 28 logits
+  -> weighted cross-entropy
+       sqrt inverse-frequency weights
+       maximum weight 5.0, O maximum 0.35
+  -> AdamW, default LR 2e-5, weight decay 0.01
+  -> linear schedule with 10% warmup
+  -> gradient clipping at 1.0
+  -> validation after each epoch
+  -> save best validation entity-token F1 checkpoint
+```
+
+Gradient accumulation gives:
+
+```text
+effective batch = batch size x accumulation steps
+```
+
+Validation scans thresholds from 0.0 to 0.95 and stores the best in `models_saved/bert_pii/inference_config.json`.
+
+Inference:
+
+```text
+text -> offset-preserving lexical tokens
+     -> saved tokenizer, maximum 512 subwords
+     -> BERT logits and softmax
+     -> first subword prediction per lexical token
+     -> merge compatible I tags
+     -> mean confidence across merged tokens
+     -> threshold -> risk -> redaction
+```
+
+Strengths: multilingual pretrained context and better handling of unseen words through subwords.
+
+Limitations: high CPU training cost, large artifact, and dependence on synthetic training diversity.
+
+### 5. Optional Word2Vec utility
+
+`src/features/embeddings.py` defines a 100-dimensional skip-gram Word2Vec model and mean sentence embeddings. It is experimental and not used by `train_all.py`, Streamlit, or the six-model registry.
+
+## Inference, confidence, risk, and redaction
+
+### Registry and compatibility checks
+
+`available_models()` checks artifacts. For BERT and BiLSTM it verifies that saved label order matches the shared 28-label schema, preventing old checkpoints from loading into new output layers.
+
+### Confidence
+
+Confidence values are not directly comparable:
+
+- pattern confidence is manually assigned;
+- BERT/BiLSTM confidence is maximum token softmax;
+- merged BERT confidence is the mean token confidence;
+- merged BiLSTM confidence is the minimum token confidence;
+- SVM has no calibrated entity probability;
+- classical redaction uses pattern entities and confidence.
+
+Low neural confidence can come from limited training, imbalance, unfamiliar tokens, ambiguous context, or an incompatible checkpoint. Lowering the threshold improves recall but can increase false positives. Softmax is not guaranteed real-world correctness.
+
+### Risk
+
+| Score | Level | Examples |
+|---:|---|---|
+| 1 | LOW | Location |
+| 2 | MEDIUM | Person, date, organization, occupation, education |
+| 3 | HIGH | Phone, email, IP, address, employee/student ID |
+| 4 | CRITICAL | NID, card, account, passport, medical ID, health condition |
+
+Overall document risk is the highest entity score, not a sum.
+
+### Span-safe redaction
+
+The redactor:
+
+1. keeps entities meeting the threshold;
+2. sorts spans from end to start;
+3. replaces exact `text[start:end]` slices with markers.
+
+Reverse order prevents one replacement from invalidating later offsets.
+
+| Type | Marker |
+|---|---|
+| `PERSON` | `[PERSON]` |
+| `PHONE` | `[PHONE_NUMBER]` |
+| `EMAIL` | `[EMAIL]` |
+| `ACCOUNT` | `[ACCOUNT_NUMBER]` |
+| Unknown | `[PRIVATE_DATA]` |
+
+### Failure fallback
+
+`analyze(..., fallback=True)` catches model loading/inference errors and uses patterns. The result reports the requested and actual model. Use `fallback=False` to expose the original error while debugging.
+
+## Training commands
+
+Run commands from the project root with the virtual environment active.
+
+### Options
 
 ```powershell
-Invoke-RestMethod -Method Post `
-  -Uri "http://127.0.0.1:8000/scan" `
-  -ContentType "application/json" `
-  -Body '{"text":"My phone is +8801712345678"}'
+python train_all.py --help
 ```
 
-The current REST endpoint uses the privacy firewall's pattern detector. Multi-model comparison is provided by the Streamlit application through the unified model service.
-
-## 15. Testing
-
-Run the automated test suite:
-
-```bash
-pytest -q
-```
-
-Tests cover structured PII, Bengali input, card validation, name/location/NID handling, model registry behavior, fallback behavior, direct NER-label inference, and lexical span preservation.
-
-Before accepting a newly trained model, also test a manually reviewed collection containing:
-
-- Previously unseen full names
-- Multi-word organizations and locations
-- Bengali and Banglish input
-- Several identifier formats
-- Long mixed-entity paragraphs
-- Safe text with no PII
-- Ambiguous numeric values that must not be mislabeled
-
-## 16. Recommended experiment workflow
-
-1. Review entity definitions and annotation rules.
-2. Generate the multilingual NER data.
-3. Manually inspect samples and repair systematic template or label errors.
-4. Train classical baselines.
-5. Train BiLSTM and establish a neural sequence baseline.
-6. Fine-tune BERT using the full training split.
-7. Select settings using validation F1, not test performance.
-8. Evaluate once on the held-out test split.
-9. Perform exact-span and language-specific error analysis.
-10. Test through Streamlit with realistic long text.
-11. Add corrected failure cases to the training distribution without leaking test examples.
-12. Retrain, version artifacts, and record the data version and command used.
-
-## 17. Accuracy guidance
-
-For stronger NER accuracy:
-
-- Prefer BERT for the final detector and use BiLSTM as a comparison model.
-- Increase diversity before simply increasing duplicate template volume.
-- Balance rare entity types and include confusing negative examples.
-- Keep entity values disjoint across data splits where possible.
-- Correct label boundaries, especially for multi-word names and organizations.
-- Track per-class precision, recall, and F1 rather than only overall accuracy.
-- Tune the confidence threshold on validation data.
-- Keep structured patterns as a defense-in-depth layer for identifiers where recall is critical.
-- Measure results on real, manually labeled, consented data from the intended domain.
-
-No model can detect every sensitive value with perfect accuracy. Production privacy protection should combine a trained model, validated structured rules, access controls, secure logging, human review for high-risk workflows, and continuous monitoring.
-
-## 18. Troubleshooting
-
-### BERT reports that its artifact is unavailable
-
-Train it and restart Streamlit:
-
-```bash
-python train_all.py --skip-classical --bert --bert-samples 0 --skip-ner-generation --bert-epochs 3 --bert-batch-size 8
-streamlit run app.py
-```
-
-### CUDA runs out of memory
-
-Use a smaller batch and gradient accumulation:
-
-```bash
-python train_all.py --skip-classical --bert --bert-samples 0 --skip-ner-generation --bert-batch-size 2 --bert-gradient-accumulation 4
-```
-
-### Training is too slow
-
-First verify the pipeline with a small subset. Then train the full dataset on a CUDA-capable GPU. A ten-minute target is reasonable only for a smoke test or sufficiently fast hardware; it is not a reliable full-training promise.
-
-### A full name is split or includes surrounding words
-
-Check that the training sequence uses `B-PERSON` for the first name token, `I-PERSON` for every continuation token, and `O` for nearby grammar. Add varied corrected examples rather than adding a special-case name function.
-
-### NID, phone, and account are confused
-
-Add negative and contextual examples for all competing number formats. A neural model needs phrases such as `national id`, `phone`, and `account number` across multiple languages and writing styles. Keep structured validation rules for identifiers whose formats are known.
-
-### The application uses the pattern detector unexpectedly
-
-Read the UI warning and the “model used” field. The selected artifact may be missing or inference may have failed. Disable safe fallback while debugging if you want the original exception to be surfaced instead of receiving pattern results.
-
-## 19. End-to-end quick start
+### Classical models
 
 ```powershell
-cd "E:\academic\4.1\NLP_lab\NLP_PROJECT"
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m src.dataset.generate_ner_dataset --samples 30000
 python train_all.py
-python train_all.py --skip-classical --bilstm --skip-ner-generation
-python train_all.py --skip-classical --bert --bert-samples 0 --skip-ner-generation --bert-epochs 3 --bert-batch-size 8
-pytest -q
-streamlit run app.py
 ```
 
-In another activated terminal, start the API if needed:
+Creates three `.joblib` files and `results/baseline_results.csv`.
+
+### Generate NER data only
 
 ```powershell
-cd "E:\academic\4.1\NLP_lab\NLP_PROJECT"
-.\.venv\Scripts\Activate.ps1
+python -m src.dataset.generate_ner_dataset --samples 30000 --seed 42
+```
+
+Minimum sample count is 100.
+
+### BiLSTM with new data
+
+```powershell
+python train_all.py --skip-classical --bilstm --ner-samples 30000
+```
+
+`train_all.py` uses BiLSTM defaults: 3 epochs, batch 128, seed 42.
+
+Custom BiLSTM training with existing data:
+
+```powershell
+python -m src.models.lstm.train --epochs 5 --batch-size 128 --seed 42
+```
+
+### Small BERT experiment
+
+```powershell
+python train_all.py --skip-classical --bert --ner-samples 1500 --bert-samples 0 --bert-epochs 3 --bert-batch-size 8
+```
+
+This generates 1,500 total records, trains on 1,200, validates on 150, and tests on 150.
+
+### BERT on the existing full splits
+
+```powershell
+python train_all.py --skip-classical --bert --skip-ner-generation --bert-samples 0 --bert-epochs 3 --bert-batch-size 8
+```
+
+With the current data this trains on all 24,000 training records.
+
+### Lower GPU-memory usage
+
+```powershell
+python train_all.py --skip-classical --bert --skip-ner-generation --bert-samples 0 --bert-epochs 3 --bert-batch-size 4 --bert-gradient-accumulation 2
+```
+
+Batch 4 and accumulation 2 give an effective batch near 8.
+
+### Everything in one run
+
+```powershell
+python train_all.py --bilstm --bert --ner-samples 30000 --bert-samples 0 --bert-epochs 3 --bert-batch-size 8
+```
+
+### Direct BERT options and evaluation
+
+```powershell
+python -m src.models.transformer.train --help
+python -m src.evaluation.evaluate_bert --batch-size 8
+```
+
+The direct trainer also exposes learning rate, model name, and seed. BERT may take hours on CPU; verify CUDA before a long run.
+
+## Evaluation and current results
+
+### Classical
+
+The classical pipeline reports accuracy and weighted precision, recall, and F1.
+
+| Model | Accuracy | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|
+| Logistic Regression | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| Naive Bayes | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| SVM | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+
+### BERT
+
+BERT reports accuracy and micro precision/recall/F1 over non-`O` token labels.
+
+| Held-out test metric | Value |
+|---|---:|
+| Token accuracy | 0.999932 |
+| Entity-token precision | 0.999891 |
+| Entity-token recall | 0.999837 |
+| Entity-token F1 | 0.999864 |
+| Recommended threshold | 0.0 |
+
+These near-perfect results require caution. The generator uses a finite template/value system and performs a random record split after generation, so related patterns can cross splits. Metrics are token-level, not strict whole-span metrics.
+
+The results demonstrate learning of the generated distribution; they do not prove equal accuracy on real emails, medical text, spelling variants, adversarial formats, or unseen organizations.
+
+A defensible evaluation should add:
+
+- a human-reviewed gold test set;
+- template/source-group splitting before augmentation;
+- strict span-level and per-entity metrics;
+- confusion matrices and error analysis;
+- evaluation on an independent public PII dataset.
+
+## Streamlit application
+
+Run:
+
+```powershell
+python -m streamlit run app.py
+```
+
+Features:
+
+- six model choices and artifact status;
+- confidence threshold;
+- fallback toggle;
+- English, Bengali, and Banglish examples;
+- protected-text download;
+- entity type, risk, confidence, source, and offsets.
+
+Successful BERT/BiLSTM runs use model-only NER; patterns are not silently added. Classical runs use document prediction plus pattern spans.
+
+## FastAPI service
+
+Run:
+
+```powershell
 python api.py
 ```
 
-The complete local flow is:
+or:
+
+```powershell
+python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Documentation: <http://127.0.0.1:8000/docs>
+
+Health:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Scan:
+
+```powershell
+$body = @{
+    text = "Call 01712345678 or email user@example.com"
+    confidence_threshold = 0.80
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri http://127.0.0.1:8000/scan -Method Post -ContentType "application/json" -Body $body
+```
+
+The current `/scan` calls `privacy_guard()`, so it uses pattern/context detection only. It has no BERT/BiLSTM/classical selection parameter.
+
+Limits:
+
+- text: 1 to 100,000 characters;
+- confidence threshold: 0.0 to 1.0.
+
+## Testing
+
+```powershell
+python -m pytest
+```
+
+Tests cover multi-entity redaction, Bengali preservation, card validation, fallback, model registry, multi-word entities, Bengali person/location/NID, BIO coverage, model-only BERT behavior, and sensitive-token preservation.
+
+Manual checks:
+
+```powershell
+python -c "from src.redection.privacy_firewall import privacy_guard; print(privacy_guard('My name is Rahim Ahmed and my phone is 01712345678'))"
+python -c "from src.inference.model_service import analyze; print(analyze('Email user@example.com', 'BERT', fallback=False))"
+```
+
+## Limitations and recommended improvements
+
+### Current limitations
+
+1. Neural data is synthetic and uses a limited template bank.
+2. Records are split after generation, not by template family.
+3. BIO JSON does not store original-text character offsets.
+4. BIOES is not implemented; the project uses BIO.
+5. The test set is not a manually reviewed gold set.
+6. Pattern coverage is narrower than the neural schema.
+7. BiLSTM has an exact vocabulary and 32-token limit.
+8. BiLSTM lacks validation, early stopping, and best-checkpoint metrics.
+9. BERT evaluation is token-level, not strict span-level.
+10. Classical labels are simple weak labels and can reward template memorization.
+11. FastAPI exposes patterns only.
+12. Controlled pseudonymization and generative safe rewriting are not implemented.
+
+### Highest-value improvements
+
+1. Assign templates group IDs and split groups before augmentation.
+2. Add hundreds of structurally different templates and difficult safe hard negatives.
+3. Create and double-review a smaller gold test set.
+4. Store original text, token offsets, entity spans, and annotator metadata.
+5. Add strict span-level/per-type evaluation with `seqeval` or `nervaluate`.
+6. Add BiLSTM validation, early stopping, class weights, packed sequences, and optionally CRF.
+7. Add patterns for passport, account, date of birth, username, and address.
+8. Add deterministic, format-preserving pseudonymization.
+9. Add separately evaluated safe rewriting with a mandatory post-generation PII scan.
+10. Add API model selection and audit metadata without logging raw PII.
+
+### Suggested pseudonymization architecture
 
 ```text
-Dataset generation
-       ↓
-Model training and validation
-       ↓
-Saved artifacts
-       ↓
-Streamlit or FastAPI input
-       ↓
-PII detection
-       ↓
-Risk classification
-       ↓
-Confidence filtering and redaction
-       ↓
-Protected output
+input
+  -> strongest detector
+  -> normalized non-overlapping spans
+  -> per-document keyed replacement map
+       PERSON -> synthetic name
+       EMAIL -> example-domain address
+       PHONE -> valid-format fake number
+       ADDRESS -> synthetic address
+  -> replace right to left
+  -> post-transformation safety scan
+  -> rewritten text + non-sensitive metadata
 ```
+
+Use controlled replacement rather than unconstrained generation. If a language model later rewrites style, block output that fails the final PII scan.
+
+## Troubleshooting
+
+### `ModuleNotFoundError`
+
+```powershell
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Use `python -m ...` so imports use the active interpreter.
+
+### Model is marked missing or outdated
+
+The artifact is absent or its saved labels do not match the 28-label schema. Regenerate data and retrain. Never combine new label metadata with old weights.
+
+### BiLSTM tensor-size RuntimeError
+
+The checkpoint probably uses an old output layer or vocabulary. Retrain so `bilstm_pii.pt` and `bilstm_labels.json` are generated together:
+
+```powershell
+python train_all.py --skip-classical --bilstm --ner-samples 30000
+```
+
+### Low BERT confidence
+
+Check the checkpoint, losses, label frequency, unseen formats, validation calibration, and dataset representativeness. Do not treat softmax as a guaranteed probability.
+
+### CUDA is unavailable
+
+```powershell
+python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.is_available())"
+```
+
+If the version includes `+cpu` or `torch.version.cuda` is `None`, install a CUDA build in this virtual environment using the official selector.
+
+### CUDA out of memory
+
+```powershell
+python train_all.py --skip-classical --bert --skip-ner-generation --bert-samples 0 --bert-batch-size 2 --bert-gradient-accumulation 4
+```
+
+### CPU training is slow
+
+- start with 1,500 to 3,000 generated samples;
+- use one epoch to validate the pipeline;
+- reuse splits with `--skip-ner-generation`;
+- move full BERT runs to a CUDA GPU or cloud notebook.
+
+### Requested model falls back to patterns
+
+Read the Streamlit warning or set `fallback=False` to reveal the error. Check `available_models()`, dependencies, artifact paths, and label compatibility.
+
+## Responsible use
+
+PrivacyGuard is an educational/research system. Do not claim regulatory compliance or deploy it as the only protection for sensitive production data without independent review, representative evaluation, access controls, encryption, safe logging, and a fail-closed policy.
+
+Never add real secrets, passwords, payment credentials, or unapproved personal records to the repository.

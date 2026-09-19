@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="860" viewBox="0 0 1600 860" role="img" aria-labelledby="title desc">
+  <title id="title">PrivacyGuard multilingual BERT pipeline architecture</title>
+  <desc id="desc">Complete multilingual BERT training, validation, threshold selection, test evaluation, and entity-redaction inference flow.</desc>
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8fcff"/><stop offset="1" stop-color="#e7f4fb"/></linearGradient>
+    <linearGradient id="data2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fbfeff"/><stop offset="1" stop-color="#d6eaf6"/></linearGradient>
+    <linearGradient id="model2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#f2fff9"/><stop offset="1" stop-color="#c8eadb"/></linearGradient>
+    <linearGradient id="result2" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffdf4"/><stop offset="1" stop-color="#f3e5b7"/></linearGradient>
+    <filter id="shadow2" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#17475e" flood-opacity=".2"/></filter>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#075a79"/></marker>
+    <style>
+      .heading2{font:700 30px Arial,sans-serif;fill:#081c26;text-anchor:middle}.lane2{font:700 23px Arial,sans-serif;fill:#073d55}
+      .label2{font:700 15px Arial,sans-serif;fill:#0b2029;text-anchor:middle}.small2{font:13px Arial,sans-serif;fill:#17343f;text-anchor:middle}
+      .tiny2{font:12px Arial,sans-serif;fill:#31505c;text-anchor:middle}.box2{stroke:#09617f;stroke-width:1.8;filter:url(#shadow2)}
+      .arrow2{fill:none;stroke:#075a79;stroke-width:2.4;marker-end:url(#arrow2)}.feedback2{fill:none;stroke:#9b5f0d;stroke-width:2.2;stroke-dasharray:8 6;marker-end:url(#arrow2)}
+    </style>
+  </defs>
+  <rect width="1600" height="860" fill="url(#bg2)"/><rect x="18" y="18" width="1564" height="824" rx="15" fill="none" stroke="#075a79" stroke-width="2"/>
+  <text x="800" y="56" class="heading2">MULTILINGUAL BERT PII TOKEN-CLASSIFICATION PIPELINE</text>
+  <text x="80" y="103" class="lane2" text-anchor="start">TRAINING + VALIDATION + TEST</text>
+
+  <!-- Data and label alignment -->
+  <rect x="42" y="128" width="180" height="94" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="132" y="154" class="label2">BIO JSON Splits</text><text x="132" y="178" class="small2">train / validation / test</text><text x="132" y="200" class="tiny2">tokens + 28-label schema</text>
+  <rect x="255" y="128" width="205" height="94" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="357" y="153" class="label2">BERTDataset</text><text x="357" y="177" class="small2">pre-split word tokens</text><text x="357" y="199" class="tiny2">fast tokenizer required</text>
+  <rect x="493" y="118" width="235" height="114" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="610" y="145" class="label2">mBERT WordPiece</text><text x="610" y="169" class="small2">is_split_into_words=True</text>
+  <text x="610" y="192" class="tiny2">padding/truncation=256</text><text x="610" y="212" class="tiny2">input_ids + attention_mask</text>
+  <rect x="761" y="118" width="245" height="114" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="883" y="145" class="label2">word_ids Label Alignment</text><text x="883" y="169" class="small2">first subword gets BIO ID</text>
+  <text x="883" y="192" class="tiny2">repeat pieces, special tokens,</text><text x="883" y="212" class="tiny2">and padding get -100</text>
+  <path d="M222 175H255" class="arrow2"/><path d="M460 175H493" class="arrow2"/><path d="M728 175H761" class="arrow2"/>
+
+  <!-- BERT model -->
+  <rect x="1040" y="105" width="510" height="140" rx="14" class="box2" fill="#ccebe1"/>
+  <rect x="1060" y="126" width="270" height="98" rx="10" class="box2" fill="url(#model2)"/>
+  <text x="1195" y="151" class="label2">bert-base-multilingual-cased</text><text x="1195" y="175" class="small2">12 transformer encoder layers</text>
+  <text x="1195" y="197" class="tiny2">contextual hidden size 768</text><text x="1195" y="216" class="tiny2">pretrained multilingual weights</text>
+  <rect x="1350" y="126" width="180" height="98" rx="10" class="box2" fill="url(#model2)"/>
+  <text x="1440" y="153" class="label2">Token Head</text><text x="1440" y="177" class="small2">768 to 28 logits</text><text x="1440" y="200" class="tiny2">[B,256,28]</text>
+  <path d="M1006 175H1060" class="arrow2"/><path d="M1330 175H1350" class="arrow2"/>
+
+  <!-- Optimization and validation -->
+  <rect x="70" y="285" width="245" height="94" rx="11" class="box2" fill="url(#result2)"/>
+  <text x="192" y="310" class="label2">Weighted Cross-Entropy</text><text x="192" y="334" class="small2">sqrt inverse-frequency</text>
+  <text x="192" y="356" class="tiny2">cap=5.0, O cap=0.35, ignore=-100</text>
+  <rect x="350" y="285" width="245" height="94" rx="11" class="box2" fill="url(#result2)"/>
+  <text x="472" y="310" class="label2">Gradient Accumulation</text><text x="472" y="334" class="small2">loss / accumulation steps</text><text x="472" y="356" class="tiny2">clip gradient norm at 1.0</text>
+  <rect x="630" y="285" width="245" height="94" rx="11" class="box2" fill="url(#result2)"/>
+  <text x="752" y="310" class="label2">AdamW + Scheduler</text><text x="752" y="334" class="small2">LR=2e-5, weight decay=.01</text><text x="752" y="356" class="tiny2">linear schedule, 10% warmup</text>
+  <rect x="910" y="275" width="255" height="114" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="1037" y="301" class="label2">Validation Each Epoch</text><text x="1037" y="325" class="small2">token accuracy + entity-token</text>
+  <text x="1037" y="347" class="small2">precision / recall / F1</text><text x="1037" y="369" class="tiny2">threshold scan: 0.00 to 0.95</text>
+  <rect x="1200" y="275" width="350" height="114" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="1375" y="301" class="label2">Best Checkpoint + Test Evaluation</text>
+  <text x="1375" y="325" class="small2">bert_pii/: model + tokenizer + config</text>
+  <text x="1375" y="347" class="small2">inference_config.json: threshold</text>
+  <text x="1375" y="369" class="tiny2">bert_metrics.json + bert_test_metrics.json</text>
+  <path d="M1440 224V260H192V285" class="arrow2"/><path d="M315 332H350" class="arrow2"/><path d="M595 332H630" class="arrow2"/>
+  <path d="M875 332H910" class="arrow2"/><path d="M1165 332H1200" class="arrow2"/><path d="M752 285V258H1195V224" class="feedback2"/>
+
+  <line x1="45" y1="429" x2="1555" y2="429" stroke="#78aabd" stroke-width="1.5"/>
+  <text x="80" y="474" class="lane2" text-anchor="start">MODEL-ONLY INFERENCE</text>
+
+  <!-- Inference input -->
+  <rect x="42" y="515" width="135" height="92" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="109" y="549" class="label2">Raw Text</text><text x="109" y="574" class="small2">original offsets</text>
+  <rect x="210" y="505" width="200" height="112" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="310" y="532" class="label2">Lexical Token Spans</text><text x="310" y="556" class="small2">split edge punctuation</text>
+  <text x="310" y="579" class="tiny2">preserve email/ID values</text><text x="310" y="599" class="tiny2">retain start/end characters</text>
+  <rect x="443" y="505" width="215" height="112" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="550" y="532" class="label2">Saved Fast Tokenizer</text><text x="550" y="556" class="small2">WordPiece, max_length=512</text>
+  <text x="550" y="579" class="tiny2">is_split_into_words=True</text><text x="550" y="599" class="tiny2">dynamic inference length</text>
+  <rect x="691" y="505" width="215" height="112" rx="11" class="box2" fill="url(#model2)"/>
+  <text x="798" y="532" class="label2">Saved mBERT Model</text><text x="798" y="556" class="small2">local_files_only=True</text>
+  <text x="798" y="579" class="tiny2">model.eval()</text><text x="798" y="599" class="tiny2">torch.inference_mode()</text>
+  <path d="M177 561H210" class="arrow2"/><path d="M410 561H443" class="arrow2"/><path d="M658 561H691" class="arrow2"/>
+
+  <!-- Prediction and postprocessing -->
+  <rect x="939" y="505" width="205" height="112" rx="11" class="box2" fill="url(#model2)"/>
+  <text x="1041" y="532" class="label2">Softmax + Argmax</text><text x="1041" y="556" class="small2">first subword per word</text>
+  <text x="1041" y="579" class="tiny2">ignore O and punctuation B tag</text><text x="1041" y="599" class="tiny2">token confidence</text>
+  <rect x="1177" y="505" width="180" height="112" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="1267" y="532" class="label2">BIO Span Merge</text><text x="1267" y="556" class="small2">join compatible I tags</text>
+  <text x="1267" y="579" class="tiny2">restore original substring</text><text x="1267" y="599" class="tiny2">mean token confidence</text>
+  <rect x="1390" y="505" width="165" height="112" rx="11" class="box2" fill="url(#result2)"/>
+  <text x="1472" y="532" class="label2">Threshold</text><text x="1472" y="556" class="small2">saved or UI value</text>
+  <text x="1472" y="579" class="tiny2">deduplicate spans</text><text x="1472" y="599" class="tiny2">remove O labels</text>
+  <path d="M906 561H939" class="arrow2"/><path d="M1144 561H1177" class="arrow2"/><path d="M1357 561H1390" class="arrow2"/>
+
+  <rect x="480" y="690" width="210" height="96" rx="11" class="box2" fill="url(#result2)"/>
+  <text x="585" y="721" class="label2">Risk Assignment</text><text x="585" y="745" class="small2">entity level + score</text><text x="585" y="767" class="tiny2">maximum = overall risk</text>
+  <rect x="735" y="690" width="250" height="96" rx="11" class="box2" fill="url(#result2)"/>
+  <text x="860" y="721" class="label2">Reverse-Offset Redaction</text><text x="860" y="745" class="small2">type-specific markers</text><text x="860" y="767" class="tiny2">preserve all other text</text>
+  <rect x="1030" y="690" width="235" height="96" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="1147" y="721" class="label2">Structured Result</text><text x="1147" y="745" class="small2">entities + safe_text + risk</text><text x="1147" y="767" class="tiny2">source = bert</text>
+  <rect x="1310" y="690" width="245" height="96" rx="11" class="box2" fill="url(#data2)"/>
+  <text x="1432" y="721" class="label2">Application Output</text><text x="1432" y="745" class="small2">Streamlit / Python</text><text x="1432" y="767" class="tiny2">patterns only if model fails</text>
+  <path d="M1472 617V655H585V690" class="arrow2"/><path d="M690 738H735" class="arrow2"/><path d="M985 738H1030" class="arrow2"/><path d="M1265 738H1310" class="arrow2"/>
+</svg>
